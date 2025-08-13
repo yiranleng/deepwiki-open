@@ -1,4 +1,4 @@
-"""OpenRouter ModelClient integration."""
+"""OpenRouter模型客户端集成。"""
 
 from typing import Dict, Sequence, Optional, Any, List
 import logging
@@ -17,14 +17,14 @@ from adalflow.core.types import (
 log = logging.getLogger(__name__)
 
 class OpenRouterClient(ModelClient):
-    __doc__ = r"""A component wrapper for the OpenRouter API client.
+    __doc__ = r"""OpenRouter API客户端的组件包装器。
 
-    OpenRouter provides a unified API that gives access to hundreds of AI models through a single endpoint.
-    The API is compatible with OpenAI's API format with a few small differences.
+    OpenRouter提供了一个统一的API，通过单一端点访问数百个AI模型。
+    API与OpenAI的API格式兼容，只有一些小的差异。
 
-    Visit https://openrouter.ai/docs for more details.
+    访问 https://openrouter.ai/docs 了解更多详情。
 
-    Example:
+    示例:
         ```python
         from api.openrouter_client import OpenRouterClient
 
@@ -37,32 +37,44 @@ class OpenRouterClient(ModelClient):
     """
 
     def __init__(self, *args, **kwargs) -> None:
-        """Initialize the OpenRouter client."""
+        """
+        初始化 OpenRouter 客户端。
+        """
         super().__init__(*args, **kwargs)
         self.sync_client = self.init_sync_client()
-        self.async_client = None  # Initialize async client only when needed
+        self.async_client = None  # 仅在需要时初始化异步客户端
 
     def init_sync_client(self):
-        """Initialize the synchronous OpenRouter client."""
+        """
+        初始化同步 OpenRouter 客户端。
+        
+        Returns:
+            dict: 包含API密钥和基础URL的配置字典
+        """
         from api.config import OPENROUTER_API_KEY
         api_key = OPENROUTER_API_KEY
         if not api_key:
-            log.warning("OPENROUTER_API_KEY not configured")
+            log.warning("OPENROUTER_API_KEY未配置")
 
-        # OpenRouter doesn't have a dedicated client library, so we'll use requests directly
+        # OpenRouter没有专门的客户端库，所以我们将直接使用requests
         return {
             "api_key": api_key,
             "base_url": "https://openrouter.ai/api/v1"
         }
 
     def init_async_client(self):
-        """Initialize the asynchronous OpenRouter client."""
+        """
+        初始化异步 OpenRouter 客户端。
+        
+        Returns:
+            dict: 包含API密钥和基础URL的配置字典
+        """
         from api.config import OPENROUTER_API_KEY
         api_key = OPENROUTER_API_KEY
         if not api_key:
-            log.warning("OPENROUTER_API_KEY not configured")
+            log.warning("OPENROUTER_API_KEY未配置")
 
-        # For async, we'll use aiohttp
+        # 对于异步，我们将使用aiohttp
         return {
             "api_key": api_key,
             "base_url": "https://openrouter.ai/api/v1"
@@ -71,55 +83,67 @@ class OpenRouterClient(ModelClient):
     def convert_inputs_to_api_kwargs(
         self, input: Any, model_kwargs: Dict = None, model_type: ModelType = None
     ) -> Dict:
-        """Convert AdalFlow inputs to OpenRouter API format."""
+        """
+        将 AdalFlow 输入转换为 OpenRouter API 格式。
+        
+        Args:
+            input: 输入数据
+            model_kwargs: 模型参数
+            model_type: 模型类型
+            
+        Returns:
+            dict: 转换后的API参数
+        """
         model_kwargs = model_kwargs or {}
 
         if model_type == ModelType.LLM:
-            # Handle LLM generation
+            # 处理LLM生成
             messages = []
 
-            # Convert input to messages format if it's a string
+            # 如果输入是字符串，则转换为消息格式
             if isinstance(input, str):
                 messages = [{"role": "user", "content": input}]
             elif isinstance(input, list) and all(isinstance(msg, dict) for msg in input):
                 messages = input
             else:
-                raise ValueError(f"Unsupported input format for OpenRouter: {type(input)}")
+                raise ValueError(f"OpenRouter不支持的输入格式: {type(input)}")
 
-            # For debugging
-            log.info(f"Messages for OpenRouter: {messages}")
+            # 用于调试
+            log.info(f"OpenRouter的消息: {messages}")
 
             api_kwargs = {
                 "messages": messages,
                 **model_kwargs
             }
 
-            # Ensure model is specified
+            # 确保模型已指定
             if "model" not in api_kwargs:
                 api_kwargs["model"] = "openai/gpt-3.5-turbo"
 
             return api_kwargs
 
         elif model_type == ModelType.EMBEDDING:
-            # OpenRouter doesn't support embeddings directly
-            # We could potentially use a specific model through OpenRouter for embeddings
-            # but for now, we'll raise an error
-            raise NotImplementedError("OpenRouter client does not support embeddings yet")
+            # OpenRouter不直接支持嵌入
+            # 我们可以在OpenRouter中通过特定的模型使用嵌入，
+            # 但目前，我们将抛出错误
+            raise NotImplementedError("OpenRouter客户端不支持嵌入")
 
         else:
-            raise ValueError(f"Unsupported model type: {model_type}")
+            raise ValueError(f"不支持的模型类型: {model_type}")
 
     async def acall(self, api_kwargs: Dict = None, model_type: ModelType = None) -> Any:
-        """Make an asynchronous call to the OpenRouter API."""
+        """
+        对 OpenRouter API 进行异步调用。
+        """
         if not self.async_client:
             self.async_client = self.init_async_client()
 
-        # Check if API key is set
+        # 检查API密钥是否已设置
         if not self.async_client.get("api_key"):
-            error_msg = "OPENROUTER_API_KEY not configured. Please set this environment variable to use OpenRouter."
+            error_msg = "OPENROUTER_API_KEY未配置。请设置此环境变量以使用OpenRouter。"
             log.error(error_msg)
-            # Instead of raising an exception, return a generator that yields the error message
-            # This allows the error to be displayed to the user in the streaming response
+            # 相反，我们返回一个生成器，该生成器生成错误消息
+            # 这允许错误消息显示在流式响应中
             async def error_generator():
                 yield error_msg
             return error_generator()
@@ -127,22 +151,22 @@ class OpenRouterClient(ModelClient):
         api_kwargs = api_kwargs or {}
 
         if model_type == ModelType.LLM:
-            # Prepare headers
+            # 准备标头
             headers = {
                 "Authorization": f"Bearer {self.async_client['api_key']}",
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://github.com/AsyncFuncAI/deepwiki-open",  # Optional
-                "X-Title": "DeepWiki"  # Optional
+                "HTTP-Referer": "https://github.com/AsyncFuncAI/deepwiki-open",  # 可选
+                "X-Title": "DeepWiki"  # 可选
             }
 
-            # Always use non-streaming mode for OpenRouter
+            # 始终使用OpenRouter的非流式模式
             api_kwargs["stream"] = False
 
-            # Make the API call
+            # 进行API调用
             try:
-                log.info(f"Making async OpenRouter API call to {self.async_client['base_url']}/chat/completions")
-                log.info(f"Request headers: {headers}")
-                log.info(f"Request body: {api_kwargs}")
+                log.info(f"正在异步调用OpenRouter API到{self.async_client['base_url']}/chat/completions")
+                log.info(f"请求头: {headers}")
+                log.info(f"请求体: {api_kwargs}")
 
                 async with aiohttp.ClientSession() as session:
                     try:
@@ -154,133 +178,133 @@ class OpenRouterClient(ModelClient):
                         ) as response:
                             if response.status != 200:
                                 error_text = await response.text()
-                                log.error(f"OpenRouter API error ({response.status}): {error_text}")
+                                log.error(f"OpenRouter API错误 ({response.status}): {error_text}")
 
-                                # Return a generator that yields the error message
+                                # 返回一个生成器，该生成器生成错误消息
                                 async def error_response_generator():
-                                    yield f"OpenRouter API error ({response.status}): {error_text}"
+                                    yield f"OpenRouter API错误 ({response.status}): {error_text}"
                                 return error_response_generator()
 
-                            # Get the full response
+                            # 获取完整响应
                             data = await response.json()
-                            log.info(f"Received response from OpenRouter: {data}")
+                            log.info(f"从OpenRouter接收到的响应: {data}")
 
-                            # Create a generator that yields the content
+                            # 创建一个生成器，该生成器生成内容
                             async def content_generator():
                                 if "choices" in data and len(data["choices"]) > 0:
                                     choice = data["choices"][0]
                                     if "message" in choice and "content" in choice["message"]:
                                         content = choice["message"]["content"]
-                                        log.info("Successfully retrieved response")
+                                        log.info("成功检索到响应")
 
-                                        # Check if the content is XML and ensure it's properly formatted
+                                        # 检查内容是否为XML并确保其格式正确
                                         if content.strip().startswith("<") and ">" in content:
-                                            # It's likely XML, let's make sure it's properly formatted
+                                            # 它可能是XML，让我们确保其格式正确
                                             try:
-                                                # Extract the XML content
+                                                # 提取XML内容
                                                 xml_content = content
 
-                                                # Check if it's a wiki_structure XML
+                                                # 检查是否是wiki_structure XML
                                                 if "<wiki_structure>" in xml_content:
-                                                    log.info("Found wiki_structure XML, ensuring proper format")
+                                                    log.info("找到wiki_structure XML，确保格式正确")
 
-                                                    # Extract just the wiki_structure XML
+                                                    # 提取仅wiki_structure XML
                                                     import re
                                                     wiki_match = re.search(r'<wiki_structure>[\s\S]*?<\/wiki_structure>', xml_content)
                                                     if wiki_match:
-                                                        # Get the raw XML
+                                                        # 获取原始XML
                                                         raw_xml = wiki_match.group(0)
 
-                                                        # Clean the XML by removing any leading/trailing whitespace
-                                                        # and ensuring it's properly formatted
+                                                        # 清理XML，移除任何前导/尾随空格
+                                                        # 并确保其格式正确
                                                         clean_xml = raw_xml.strip()
 
-                                                        # Try to fix common XML issues
+                                                        # 尝试修复常见的XML问题
                                                         try:
-                                                            # Replace problematic characters in XML
+                                                            # 替换XML中的问题字符
                                                             fixed_xml = clean_xml
 
-                                                            # Replace & with &amp; if not already part of an entity
+                                                            # 如果它不是实体的一部分，则将&替换为&amp;
                                                             fixed_xml = re.sub(r'&(?!amp;|lt;|gt;|apos;|quot;)', '&amp;', fixed_xml)
 
-                                                            # Fix other common XML issues
+                                                            # 修复其他常见的XML问题
                                                             fixed_xml = fixed_xml.replace('</', '</').replace('  >', '>')
 
-                                                            # Try to parse the fixed XML
+                                                            # 尝试解析修复后的XML
                                                             from xml.dom.minidom import parseString
                                                             dom = parseString(fixed_xml)
 
-                                                            # Get the pretty-printed XML with proper indentation
+                                                            # 获取格式化良好的XML，带有适当的缩进
                                                             pretty_xml = dom.toprettyxml()
 
-                                                            # Remove XML declaration
+                                                            # 移除XML声明
                                                             if pretty_xml.startswith('<?xml'):
                                                                 pretty_xml = pretty_xml[pretty_xml.find('?>')+2:].strip()
 
-                                                            log.info(f"Extracted and validated XML: {pretty_xml[:100]}...")
+                                                            log.info(f"提取并验证XML: {pretty_xml[:100]}...")
                                                             yield pretty_xml
                                                         except Exception as xml_parse_error:
-                                                            log.warning(f"XML validation failed: {str(xml_parse_error)}, using raw XML")
+                                                            log.warning(f"XML验证失败: {str(xml_parse_error)}，使用原始XML")
 
-                                                            # If XML validation fails, try a more aggressive approach
+                                                            # 如果XML验证失败，请尝试更激进的解决方案
                                                             try:
-                                                                # Use regex to extract just the structure without any problematic characters
+                                                                # 使用正则表达式仅提取结构，不包含任何问题字符
                                                                 import re
 
-                                                                # Extract the basic structure
+                                                                # 提取基本结构
                                                                 structure_match = re.search(r'<wiki_structure>(.*?)</wiki_structure>', clean_xml, re.DOTALL)
                                                                 if structure_match:
                                                                     structure = structure_match.group(1).strip()
 
-                                                                    # Rebuild a clean XML structure
+                                                                    # 重建一个干净的XML结构
                                                                     clean_structure = "<wiki_structure>\n"
 
-                                                                    # Extract title
+                                                                    # 提取标题
                                                                     title_match = re.search(r'<title>(.*?)</title>', structure, re.DOTALL)
                                                                     if title_match:
                                                                         title = title_match.group(1).strip()
                                                                         clean_structure += f"  <title>{title}</title>\n"
 
-                                                                    # Extract description
+                                                                    # 提取描述
                                                                     desc_match = re.search(r'<description>(.*?)</description>', structure, re.DOTALL)
                                                                     if desc_match:
                                                                         desc = desc_match.group(1).strip()
                                                                         clean_structure += f"  <description>{desc}</description>\n"
 
-                                                                    # Add pages section
+                                                                    # 添加页面部分
                                                                     clean_structure += "  <pages>\n"
 
-                                                                    # Extract pages
+                                                                    # 提取页面
                                                                     pages = re.findall(r'<page id="(.*?)">(.*?)</page>', structure, re.DOTALL)
                                                                     for page_id, page_content in pages:
                                                                         clean_structure += f'    <page id="{page_id}">\n'
 
-                                                                        # Extract page title
+                                                                        # 提取页面标题
                                                                         page_title_match = re.search(r'<title>(.*?)</title>', page_content, re.DOTALL)
                                                                         if page_title_match:
                                                                             page_title = page_title_match.group(1).strip()
                                                                             clean_structure += f"      <title>{page_title}</title>\n"
 
-                                                                        # Extract page description
+                                                                        # 提取页面描述
                                                                         page_desc_match = re.search(r'<description>(.*?)</description>', page_content, re.DOTALL)
                                                                         if page_desc_match:
                                                                             page_desc = page_desc_match.group(1).strip()
                                                                             clean_structure += f"      <description>{page_desc}</description>\n"
 
-                                                                        # Extract importance
+                                                                        # 提取重要性
                                                                         importance_match = re.search(r'<importance>(.*?)</importance>', page_content, re.DOTALL)
                                                                         if importance_match:
                                                                             importance = importance_match.group(1).strip()
                                                                             clean_structure += f"      <importance>{importance}</importance>\n"
 
-                                                                        # Extract relevant files
+                                                                        # 提取相关文件
                                                                         clean_structure += "      <relevant_files>\n"
                                                                         file_paths = re.findall(r'<file_path>(.*?)</file_path>', page_content, re.DOTALL)
                                                                         for file_path in file_paths:
                                                                             clean_structure += f"        <file_path>{file_path.strip()}</file_path>\n"
                                                                         clean_structure += "      </relevant_files>\n"
 
-                                                                        # Extract related pages
+                                                                        # 提取相关页面
                                                                         clean_structure += "      <related_pages>\n"
                                                                         related_pages = re.findall(r'<related>(.*?)</related>', page_content, re.DOTALL)
                                                                         for related in related_pages:
@@ -291,74 +315,74 @@ class OpenRouterClient(ModelClient):
 
                                                                     clean_structure += "  </pages>\n</wiki_structure>"
 
-                                                                    log.info("Successfully rebuilt clean XML structure")
+                                                                    log.info("成功重建干净的XML结构")
                                                                     yield clean_structure
                                                                 else:
-                                                                    log.warning("Could not extract wiki structure, using raw XML")
+                                                                    log.warning("无法提取wiki结构，使用原始XML")
                                                                     yield clean_xml
                                                             except Exception as rebuild_error:
-                                                                log.warning(f"Failed to rebuild XML: {str(rebuild_error)}, using raw XML")
+                                                                log.warning(f"重建XML失败: {str(rebuild_error)}，使用原始XML")
                                                                 yield clean_xml
                                                     else:
-                                                        # If we can't extract it, just yield the original content
-                                                        log.warning("Could not extract wiki_structure XML, yielding original content")
+                                                        # 如果我们无法提取它，只需生成原始内容
+                                                        log.warning("无法提取wiki_structure XML，生成原始内容")
                                                         yield xml_content
                                                 else:
-                                                    # For other XML content, just yield it as is
+                                                    # 对于其他XML内容，只需生成它
                                                     yield content
                                             except Exception as xml_error:
-                                                log.error(f"Error processing XML content: {str(xml_error)}")
+                                                log.error(f"处理XML内容时出错: {str(xml_error)}")
                                                 yield content
                                         else:
-                                            # Not XML, just yield the content
+                                            # 不是XML，只需生成内容
                                             yield content
                                     else:
-                                        log.error(f"Unexpected response format: {data}")
+                                        log.error(f"意外的响应格式: {data}")
                                         yield "Error: Unexpected response format from OpenRouter API"
                                 else:
-                                    log.error(f"No choices in response: {data}")
+                                    log.error(f"响应中没有选择: {data}")
                                     yield "Error: No response content from OpenRouter API"
 
                             return content_generator()
                     except aiohttp.ClientError as e_client:
-                        log.error(f"Connection error with OpenRouter API: {str(e_client)}")
+                        log.error(f"OpenRouter API连接错误: {str(e_client)}")
 
-                        # Return a generator that yields the error message
+                        # 返回一个生成器，该生成器生成错误消息
                         async def connection_error_generator():
-                            yield f"Connection error with OpenRouter API: {str(e_client)}. Please check your internet connection and that the OpenRouter API is accessible."
+                            yield f"OpenRouter API连接错误: {str(e_client)}。请检查您的互联网连接并确保OpenRouter API可访问。"
                         return connection_error_generator()
 
             except RequestException as e_req:
-                log.error(f"Error calling OpenRouter API asynchronously: {str(e_req)}")
+                log.error(f"异步调用OpenRouter API时出错: {str(e_req)}")
 
-                # Return a generator that yields the error message
+                # 返回一个生成器，该生成器生成错误消息
                 async def request_error_generator():
                     yield f"Error calling OpenRouter API: {str(e_req)}"
                 return request_error_generator()
 
             except Exception as e_unexp:
-                log.error(f"Unexpected error calling OpenRouter API asynchronously: {str(e_unexp)}")
+                log.error(f"异步调用OpenRouter API时发生意外错误: {str(e_unexp)}")
 
-                # Return a generator that yields the error message
+                # 返回一个生成器，该生成器生成错误消息
                 async def unexpected_error_generator():
                     yield f"Unexpected error calling OpenRouter API: {str(e_unexp)}"
                 return unexpected_error_generator()
 
         else:
-            error_msg = f"Unsupported model type: {model_type}"
+            error_msg = f"不支持的模型类型: {model_type}"
             log.error(error_msg)
 
-            # Return a generator that yields the error message
+            # 返回一个生成器，该生成器生成错误消息
             async def model_type_error_generator():
                 yield error_msg
             return model_type_error_generator()
 
     def _process_completion_response(self, data: Dict) -> GeneratorOutput:
-        """Process a non-streaming completion response from OpenRouter."""
+        """处理来自OpenRouter的非流式完成响应。"""
         try:
-            # Extract the completion text from the response
+            # 从响应中提取完成文本
             if not data.get("choices"):
-                raise ValueError(f"No choices in OpenRouter response: {data}")
+                raise ValueError(f"OpenRouter响应中没有选择: {data}")
 
             choice = data["choices"][0]
 
@@ -367,9 +391,9 @@ class OpenRouterClient(ModelClient):
             elif "text" in choice:
                 content = choice.get("text", "")
             else:
-                raise ValueError(f"Unexpected response format from OpenRouter: {choice}")
+                raise ValueError(f"OpenRouter的意外响应格式: {choice}")
 
-            # Extract usage information if available
+            # 如果可用，提取使用信息
             usage = None
             if "usage" in data:
                 usage = CompletionUsage(
@@ -378,7 +402,7 @@ class OpenRouterClient(ModelClient):
                     total_tokens=data["usage"].get("total_tokens", 0)
                 )
 
-            # Create and return the GeneratorOutput
+            # 创建并返回GeneratorOutput
             return GeneratorOutput(
                 data=content,
                 usage=usage,
@@ -386,11 +410,13 @@ class OpenRouterClient(ModelClient):
             )
 
         except Exception as e_proc:
-            log.error(f"Error processing OpenRouter completion response: {str(e_proc)}")
+            log.error(f"处理OpenRouter完成响应时出错: {str(e_proc)}")
             raise
 
     def _process_streaming_response(self, response):
-        """Process a streaming response from OpenRouter."""
+        """
+        处理来自 OpenRouter 的流式响应。
+        """
         try:
             log.info("Starting to process streaming response from OpenRouter")
             buffer = ""
@@ -454,7 +480,9 @@ class OpenRouterClient(ModelClient):
             yield f"Error in streaming response: {str(e_stream)}"
 
     async def _process_async_streaming_response(self, response):
-        """Process an asynchronous streaming response from OpenRouter."""
+        """
+        处理来自 OpenRouter 的异步流式响应。
+        """
         buffer = ""
         try:
             log.info("Starting to process async streaming response from OpenRouter")

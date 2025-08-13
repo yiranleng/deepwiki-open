@@ -10,122 +10,151 @@ import adalflow as adal
 from api.tools.embedder import get_embedder
 from api.prompts import RAG_SYSTEM_PROMPT as system_prompt, RAG_TEMPLATE
 
-# Create our own implementation of the conversation classes
+# 创建我们自己的对话类实现
 @dataclass
 class UserQuery:
+    """
+    用户查询的数据类。
+    """
     query_str: str
 
 @dataclass
 class AssistantResponse:
+    """
+    助手响应的数据类。
+    """
     response_str: str
 
 @dataclass
 class DialogTurn:
+    """
+    对话轮次的数据类。
+    """
     id: str
     user_query: UserQuery
     assistant_response: AssistantResponse
 
 class CustomConversation:
-    """Custom implementation of Conversation to fix the list assignment index out of range error"""
+    """
+    自定义的 Conversation 实现，用于修复列表分配索引超出范围的错误
+    """
 
     def __init__(self):
+        """
+        初始化自定义对话类。
+        """
         self.dialog_turns = []
 
     def append_dialog_turn(self, dialog_turn):
-        """Safely append a dialog turn to the conversation"""
+        """
+        安全地将对话轮次添加到对话中。
+        
+        Args:
+            dialog_turn: 要添加的对话轮次
+        """
         if not hasattr(self, 'dialog_turns'):
             self.dialog_turns = []
         self.dialog_turns.append(dialog_turn)
 
-# Import other adalflow components
+# 导入其他adalflow组件
 from adalflow.components.retriever.faiss_retriever import FAISSRetriever
 from api.config import configs
 from api.data_pipeline import DatabaseManager
 
-# Configure logging
+# 配置日志记录
 logger = logging.getLogger(__name__)
 
-# Maximum token limit for embedding models
-MAX_INPUT_TOKENS = 7500  # Safe threshold below 8192 token limit
+# 嵌入模型的最大令牌限制
+MAX_INPUT_TOKENS = 7500  # 8192令牌限制下的安全阈值
 
 class Memory(adal.core.component.DataComponent):
-    """Simple conversation management with a list of dialog turns."""
+    """
+    使用对话轮次列表进行简单对话管理。
+    """
 
     def __init__(self):
+        """
+        初始化内存组件。
+        """
         super().__init__()
-        # Use our custom implementation instead of the original Conversation class
+        # 使用我们的自定义实现而不是原始的 Conversation 类
         self.current_conversation = CustomConversation()
 
     def call(self) -> Dict:
-        """Return the conversation history as a dictionary."""
+        """
+        将对话历史作为字典返回。
+        
+        Returns:
+            Dict: 包含对话轮次的字典
+        """
         all_dialog_turns = {}
         try:
-            # Check if dialog_turns exists and is a list
+            # 检查dialog_turns是否存在且为列表
             if hasattr(self.current_conversation, 'dialog_turns'):
                 if self.current_conversation.dialog_turns:
-                    logger.info(f"Memory content: {len(self.current_conversation.dialog_turns)} turns")
+                    logger.info(f"内存内容: {len(self.current_conversation.dialog_turns)} 轮")
                     for i, turn in enumerate(self.current_conversation.dialog_turns):
                         if hasattr(turn, 'id') and turn.id is not None:
                             all_dialog_turns[turn.id] = turn
-                            logger.info(f"Added turn {i+1} with ID {turn.id} to memory")
+                            logger.info(f"将第 {i+1} 轮（ID: {turn.id}）添加到内存")
                         else:
-                            logger.warning(f"Skipping invalid turn object in memory: {turn}")
+                            logger.warning(f"跳过内存中的无效轮次对象: {turn}")
                 else:
-                    logger.info("Dialog turns list exists but is empty")
+                    logger.info("对话轮次列表存在但为空")
             else:
-                logger.info("No dialog_turns attribute in current_conversation")
-                # Try to initialize it
+                logger.info("current_conversation中没有dialog_turns属性")
+                # 尝试初始化它
                 self.current_conversation.dialog_turns = []
         except Exception as e:
-            logger.error(f"Error accessing dialog turns: {str(e)}")
-            # Try to recover
+            logger.error(f"访问对话轮次时出错: {str(e)}")
+            # 尝试恢复
             try:
                 self.current_conversation = CustomConversation()
-                logger.info("Recovered by creating new conversation")
+                logger.info("通过创建新对话恢复")
             except Exception as e2:
-                logger.error(f"Failed to recover: {str(e2)}")
+                logger.error(f"恢复失败: {str(e2)}")
 
-        logger.info(f"Returning {len(all_dialog_turns)} dialog turns from memory")
+        logger.info(f"从内存返回 {len(all_dialog_turns)} 个对话轮次")
         return all_dialog_turns
 
     def add_dialog_turn(self, user_query: str, assistant_response: str) -> bool:
         """
-        Add a dialog turn to the conversation history.
+        向对话历史添加对话轮次。
 
         Args:
-            user_query: The user's query
-            assistant_response: The assistant's response
+            user_query: 用户的查询
+            assistant_response: 助手的响应
 
         Returns:
-            bool: True if successful, False otherwise
+            bool: 成功返回 True，否则返回 False
         """
         try:
-            # Create a new dialog turn using our custom implementation
+            # 使用我们的自定义实现创建新的对话轮次
             dialog_turn = DialogTurn(
                 id=str(uuid4()),
                 user_query=UserQuery(query_str=user_query),
                 assistant_response=AssistantResponse(response_str=assistant_response),
             )
 
-            # Make sure the current_conversation has the append_dialog_turn method
+            # 确保current_conversation有append_dialog_turn方法
             if not hasattr(self.current_conversation, 'append_dialog_turn'):
-                logger.warning("current_conversation does not have append_dialog_turn method, creating new one")
-                # Initialize a new conversation if needed
+                logger.warning("current_conversation没有append_dialog_turn方法，创建新的")
+                # 如果需要则初始化新对话
                 self.current_conversation = CustomConversation()
 
-            # Ensure dialog_turns exists
+            # 确保dialog_turns存在
             if not hasattr(self.current_conversation, 'dialog_turns'):
-                logger.warning("dialog_turns not found, initializing empty list")
+                logger.warning("未找到dialog_turns，初始化空列表")
                 self.current_conversation.dialog_turns = []
 
-            # Safely append the dialog turn
+            # 安全地添加对话轮次
             self.current_conversation.dialog_turns.append(dialog_turn)
-            logger.info(f"Successfully added dialog turn, now have {len(self.current_conversation.dialog_turns)} turns")
+            logger.info(f"成功添加对话轮次，现在有 {len(self.current_conversation.dialog_turns)} 轮")
             return True
 
         except Exception as e:
-            logger.error(f"Error adding dialog turn: {str(e)}")
-            # Try to recover by creating a new conversation
+            logger.error(f"添加对话轮次时出错: {str(e)}")
+            # 尝试通过创建新对话来恢复
             try:
                 self.current_conversation = CustomConversation()
                 dialog_turn = DialogTurn(
@@ -134,10 +163,10 @@ class Memory(adal.core.component.DataComponent):
                     assistant_response=AssistantResponse(response_str=assistant_response),
                 )
                 self.current_conversation.dialog_turns.append(dialog_turn)
-                logger.info("Recovered from error by creating new conversation")
+                logger.info("通过创建新对话从错误中恢复")
                 return True
             except Exception as e2:
-                logger.error(f"Failed to recover from error: {str(e2)}")
+                logger.error(f"从错误中恢复失败: {str(e2)}")
                 return False
 
 
@@ -145,36 +174,41 @@ from dataclasses import dataclass, field
 
 @dataclass
 class RAGAnswer(adal.DataClass):
-    rationale: str = field(default="", metadata={"desc": "Chain of thoughts for the answer."})
-    answer: str = field(default="", metadata={"desc": "Answer to the user query, formatted in markdown for beautiful rendering with react-markdown. DO NOT include ``` triple backticks fences at the beginning or end of your answer."})
+    """
+    RAG答案的数据类。
+    """
+    rationale: str = field(default="", metadata={"desc": "答案的思维链。"})
+    answer: str = field(default="", metadata={"desc": "用户查询的答案，格式化为markdown以便用react-markdown进行美观渲染。不要在答案的开头或结尾包含 ``` 三重反引号围栏。"})
 
     __output_fields__ = ["rationale", "answer"]
 
 class RAG(adal.Component):
-    """RAG with one repo.
-    If you want to load a new repos, call prepare_retriever(repo_url_or_path) first."""
+    """
+    单个仓库的 RAG。
+    如果要加载新仓库，请先调用 prepare_retriever(repo_url_or_path)。
+    """
 
     def __init__(self, provider="google", model=None, use_s3: bool = False):  # noqa: F841 - use_s3 is kept for compatibility
         """
-        Initialize the RAG component.
+        初始化 RAG 组件。
 
         Args:
-            provider: Model provider to use (google, openai, openrouter, ollama)
-            model: Model name to use with the provider
-            use_s3: Whether to use S3 for database storage (default: False)
+            provider: 要使用的模型提供商 (google, openai, openrouter, ollama)
+            model: 要与提供商一起使用的模型名称
+            use_s3: 是否使用 S3 进行数据库存储 (默认: False)
         """
         super().__init__()
 
         self.provider = provider
         self.model = model
 
-        # Import the helper functions
+        # 导入辅助函数
         from api.config import get_embedder_config, is_ollama_embedder
 
-        # Determine if we're using Ollama embedder based on configuration
+        # 根据配置确定是否使用Ollama嵌入器
         self.is_ollama_embedder = is_ollama_embedder()
 
-        # Check if Ollama model exists before proceeding
+        # 在继续之前检查Ollama模型是否存在
         if self.is_ollama_embedder:
             from api.ollama_patch import check_ollama_model_exists
             from api.config import get_embedder_config
@@ -183,9 +217,9 @@ class RAG(adal.Component):
             if embedder_config and embedder_config.get("model_kwargs", {}).get("model"):
                 model_name = embedder_config["model_kwargs"]["model"]
                 if not check_ollama_model_exists(model_name):
-                    raise Exception(f"Ollama model '{model_name}' not found. Please run 'ollama pull {model_name}' to install it.")
+                    raise Exception(f"未找到Ollama模型 '{model_name}'。请运行 'ollama pull {model_name}' 来安装它。")
 
-        # Initialize components
+        # 初始化组件
         self.memory = Memory()
         self.embedder = get_embedder()
 
@@ -243,19 +277,21 @@ IMPORTANT FORMATTING RULES:
 
 
     def initialize_db_manager(self):
-        """Initialize the database manager with local storage"""
+        """
+        使用本地存储初始化数据库管理器
+        """
         self.db_manager = DatabaseManager()
         self.transformed_docs = []
 
     def _validate_and_filter_embeddings(self, documents: List) -> List:
         """
-        Validate embeddings and filter out documents with invalid or mismatched embedding sizes.
+        验证嵌入并过滤掉具有无效或不匹配嵌入大小的文档。
 
         Args:
-            documents: List of documents with embeddings
+            documents: 包含嵌入的文档列表
 
         Returns:
-            List of documents with valid embeddings of consistent size
+            具有一致大小的有效嵌入的文档列表
         """
         if not documents:
             logger.warning("No documents provided for embedding validation")
@@ -345,16 +381,17 @@ IMPORTANT FORMATTING RULES:
                       excluded_dirs: List[str] = None, excluded_files: List[str] = None,
                       included_dirs: List[str] = None, included_files: List[str] = None):
         """
-        Prepare the retriever for a repository.
-        Will load database from local storage if available.
+        为仓库准备检索器。
+        如果可用，将从本地存储加载数据库。
 
         Args:
-            repo_url_or_path: URL or local path to the repository
-            access_token: Optional access token for private repositories
-            excluded_dirs: Optional list of directories to exclude from processing
-            excluded_files: Optional list of file patterns to exclude from processing
-            included_dirs: Optional list of directories to include exclusively
-            included_files: Optional list of file patterns to include exclusively
+            repo_url_or_path: 仓库的 URL 或本地路径
+            type: 仓库类型，默认为 "github"
+            access_token: 私有仓库的可选访问令牌
+            excluded_dirs: 要排除的目录的可选列表
+            excluded_files: 要排除的文件模式的可选列表
+            included_dirs: 要包含的目录的可选列表
+            included_files: 要包含的文件模式的可选列表
         """
         self.initialize_db_manager()
         self.repo_url_or_path = repo_url_or_path
@@ -414,13 +451,14 @@ IMPORTANT FORMATTING RULES:
 
     def call(self, query: str, language: str = "en") -> Tuple[List]:
         """
-        Process a query using RAG.
+        使用 RAG 处理查询。
 
         Args:
-            query: The user's query
+            query: 用户的查询
+            language: 语言，默认为 "en"
 
         Returns:
-            Tuple of (RAGAnswer, retrieved_documents)
+            (RAGAnswer, retrieved_documents) 的元组
         """
         try:
             retrieved_documents = self.retriever(query)

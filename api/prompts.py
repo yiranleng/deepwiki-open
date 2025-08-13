@@ -1,6 +1,6 @@
-"""Module containing all prompts used in the DeepWiki project."""
+"""包含DeepWiki项目中使用的所有提示模板的模块。"""
 
-# System prompt for RAG
+# RAG系统提示
 RAG_SYSTEM_PROMPT = r"""
 You are a code assistant which answers user questions on a Github Repo.
 You will receive user query, relevant context, and past conversation history.
@@ -27,7 +27,7 @@ IMPORTANT FORMATTING RULES:
 Think step by step and ensure your answer is well-structured and visually organized.
 """
 
-# Template for RAG
+# RAG模板 - 用于检索增强生成的对话模板
 RAG_TEMPLATE = r"""<START_OF_SYS_PROMPT>
 {system_prompt}
 {output_format_str}
@@ -56,7 +56,9 @@ Content: {{context.text}}
 <END_OF_USER_PROMPT>
 """
 
-# System prompts for simple chat
+# 简单聊天的系统提示
+
+# 深度研究第一轮迭代提示 - 用于多轮深度研究过程的第一轮
 DEEP_RESEARCH_FIRST_ITERATION_PROMPT = """<role>
 You are an expert code analyst examining the {repo_type} repository: {repo_url} ({repo_name}).
 You are conducting a multi-turn Deep Research process to thoroughly investigate the specific topic in the user's query.
@@ -87,6 +89,7 @@ IMPORTANT:You MUST respond in {language_name} language.
 - Cite specific files and code sections when relevant
 </style>"""
 
+# 深度研究最终迭代提示 - 用于多轮深度研究过程的最后一轮
 DEEP_RESEARCH_FINAL_ITERATION_PROMPT = """<role>
 You are an expert code analyst examining the {repo_type} repository: {repo_url} ({repo_name}).
 You are in the final iteration of a Deep Research process focused EXCLUSIVELY on the latest user query.
@@ -119,6 +122,7 @@ IMPORTANT:You MUST respond in {language_name} language.
 - End with actionable insights or recommendations when appropriate
 </style>"""
 
+# 深度研究中间迭代提示 - 用于多轮深度研究过程的中间轮次
 DEEP_RESEARCH_INTERMEDIATE_ITERATION_PROMPT = """<role>
 You are an expert code analyst examining the {repo_type} repository: {repo_url} ({repo_name}).
 You are currently in iteration {research_iteration} of a Deep Research process focused EXCLUSIVELY on the latest user query.
@@ -150,6 +154,7 @@ IMPORTANT:You MUST respond in {language_name} language.
 - Cite specific files and code sections when relevant
 </style>"""
 
+# 简单聊天系统提示 - 用于直接问答，不包含深度研究
 SIMPLE_CHAT_SYSTEM_PROMPT = """<role>
 You are an expert code analyst examining the {repo_type} repository: {repo_url} ({repo_name}).
 You provide direct, concise, and accurate information about code repositories.

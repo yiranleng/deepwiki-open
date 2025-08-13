@@ -19,10 +19,14 @@ from api.data_pipeline import DatabaseManager
 
 
 class TestExtractRepoNameFromUrl:
-    """Comprehensive tests for the _extract_repo_name_from_url method"""
+    """
+    _extract_repo_name_from_url 方法的综合测试
+    """
     
     def setup_method(self):
-        """Set up test fixtures before each test method."""
+        """
+        在每个测试方法之前设置测试夹具。
+        """
         self.db_manager = DatabaseManager()
     
     def test_extract_repo_name_github_standard_url(self):
@@ -45,7 +49,9 @@ class TestExtractRepoNameFromUrl:
         print("✓ GitHub URL tests passed")
     
     def test_extract_repo_name_gitlab_urls(self):
-        """Test repository name extraction from GitLab URLs"""
+        """
+        测试从 GitLab URL 提取仓库名称
+        """
         
         # Test standard GitLab URL
         gitlab_url = "https://gitlab.com/owner/repo"
@@ -60,7 +66,9 @@ class TestExtractRepoNameFromUrl:
         print("✓ GitLab URL tests passed")
     
     def test_extract_repo_name_bitbucket_urls(self):
-        """Test repository name extraction from Bitbucket URLs"""
+        """
+        测试从 Bitbucket URL 提取仓库名称
+        """
         bitbucket_url = "https://bitbucket.org/owner/repo"
         result = self.db_manager._extract_repo_name_from_url(bitbucket_url, "bitbucket")
         assert result == "owner_repo"
@@ -68,7 +76,9 @@ class TestExtractRepoNameFromUrl:
         print("✓ Bitbucket URL tests passed")
     
     def test_extract_repo_name_local_paths(self):
-        """Test repository name extraction from local paths"""
+        """
+        测试从本地路径提取仓库名称
+        """
         result = self.db_manager._extract_repo_name_from_url("/home/user/projects/my-repo", "local")
         assert result == "my-repo"
 
@@ -78,7 +88,9 @@ class TestExtractRepoNameFromUrl:
         print("✓ Local path tests passed")
 
     def test_extract_repo_name_current_implementation_bug(self):
-        """Test that demonstrates the current implementation bug"""
+        """
+        演示当前实现错误的测试
+        """
         # The current implementation references 'type' which is not in scope
         try:
             # This should raise a NameError due to undefined 'type' variable
@@ -103,7 +115,9 @@ class TestExtractRepoNameFromUrl:
         print("✓ Local path tests passed")
     
     def test_extract_repo_name_edge_cases(self):
-        """Test edge cases for repository name extraction"""
+        """
+        测试仓库名称提取的边缘情况
+        """
         
         # Test URL with insufficient parts (should use fallback)
         short_url = "https://github.com/repo"

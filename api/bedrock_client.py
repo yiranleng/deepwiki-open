@@ -1,4 +1,4 @@
-"""AWS Bedrock ModelClient integration."""
+"""AWS Bedrock模型客户端集成。"""
 
 import os
 import json
@@ -11,19 +11,19 @@ from typing import Dict, Any, Optional, List, Generator, Union, AsyncGenerator
 from adalflow.core.model_client import ModelClient
 from adalflow.core.types import ModelType, GeneratorOutput
 
-# Configure logging
+# 配置日志记录
 from api.logging_config import setup_logging
 
 setup_logging()
 log = logging.getLogger(__name__)
 
 class BedrockClient(ModelClient):
-    __doc__ = r"""A component wrapper for the AWS Bedrock API client.
+    __doc__ = r"""AWS Bedrock API客户端的组件包装器。
 
-    AWS Bedrock provides a unified API that gives access to various foundation models
-    including Amazon's own models and third-party models like Anthropic Claude.
+    AWS Bedrock提供了一个统一的API，可以访问各种基础模型，
+    包括Amazon自己的模型和第三方模型，如Anthropic Claude。
 
-    Example:
+    示例:
         ```python
         from api.bedrock_client import BedrockClient
 
@@ -44,13 +44,14 @@ class BedrockClient(ModelClient):
         *args,
         **kwargs
     ) -> None:
-        """Initialize the AWS Bedrock client.
+        """
+        初始化 AWS Bedrock 客户端。
         
         Args:
-            aws_access_key_id: AWS access key ID. If not provided, will use environment variable AWS_ACCESS_KEY_ID.
-            aws_secret_access_key: AWS secret access key. If not provided, will use environment variable AWS_SECRET_ACCESS_KEY.
-            aws_region: AWS region. If not provided, will use environment variable AWS_REGION.
-            aws_role_arn: AWS IAM role ARN for role-based authentication. If not provided, will use environment variable AWS_ROLE_ARN.
+            aws_access_key_id: AWS 访问密钥 ID。如果未提供，将使用环境变量 AWS_ACCESS_KEY_ID。
+            aws_secret_access_key: AWS 秘密访问密钥。如果未提供，将使用环境变量 AWS_SECRET_ACCESS_KEY。
+            aws_region: AWS 区域。如果未提供，将使用环境变量 AWS_REGION。
+            aws_role_arn: 基于角色的身份验证的 AWS IAM 角色 ARN。如果未提供，将使用环境变量 AWS_ROLE_ARN。
         """
         super().__init__(*args, **kwargs)
         from api.config import AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, AWS_ROLE_ARN
@@ -61,19 +62,24 @@ class BedrockClient(ModelClient):
         self.aws_role_arn = aws_role_arn or AWS_ROLE_ARN
         
         self.sync_client = self.init_sync_client()
-        self.async_client = None  # Initialize async client only when needed
+        self.async_client = None  # 仅在需要时初始化异步客户端
 
     def init_sync_client(self):
-        """Initialize the synchronous AWS Bedrock client."""
+        """
+        初始化同步 AWS Bedrock 客户端。
+        
+        Returns:
+            boto3.client: 配置好的Bedrock运行时客户端
+        """
         try:
-            # Create a session with the provided credentials
+            # 使用提供的凭据创建会话
             session = boto3.Session(
                 aws_access_key_id=self.aws_access_key_id,
                 aws_secret_access_key=self.aws_secret_access_key,
                 region_name=self.aws_region
             )
             
-            # If a role ARN is provided, assume that role
+            # 如果提供了角色ARN，则承担该角色
             if self.aws_role_arn:
                 sts_client = session.client('sts')
                 assumed_role = sts_client.assume_role(
@@ -82,7 +88,7 @@ class BedrockClient(ModelClient):
                 )
                 credentials = assumed_role['Credentials']
                 
-                # Create a new session with the assumed role credentials
+                # 使用承担角色的凭据创建新会话
                 session = boto3.Session(
                     aws_access_key_id=credentials['AccessKeyId'],
                     aws_secret_access_key=credentials['SecretAccessKey'],
@@ -90,7 +96,7 @@ class BedrockClient(ModelClient):
                     region_name=self.aws_region
                 )
             
-            # Create the Bedrock client
+            # 创建Bedrock客户端
             bedrock_runtime = session.client(
                 service_name='bedrock-runtime',
                 region_name=self.aws_region
@@ -104,16 +110,18 @@ class BedrockClient(ModelClient):
             return None
 
     def init_async_client(self):
-        """Initialize the asynchronous AWS Bedrock client.
+        """
+        初始化异步 AWS Bedrock 客户端。
         
-        Note: boto3 doesn't have native async support, so we'll use the sync client
-        in async methods and handle async behavior at a higher level.
+        注意：boto3 没有原生异步支持，所以我们将在异步方法中使用同步客户端
+        并在更高层次处理异步行为。
         """
         # For now, just return the sync client
         return self.sync_client
 
     def _get_model_provider(self, model_id: str) -> str:
-        """Extract the provider from the model ID.
+        """
+        从模型 ID 中提取提供商。
         
         Args:
             model_id: The model ID, e.g., "anthropic.claude-3-sonnet-20240229-v1:0"
@@ -126,15 +134,16 @@ class BedrockClient(ModelClient):
         return "amazon"  # Default provider
 
     def _format_prompt_for_provider(self, provider: str, prompt: str, messages=None) -> Dict[str, Any]:
-        """Format the prompt according to the provider's requirements.
+        """
+        根据提供商的要求格式化提示。
         
         Args:
-            provider: The provider name, e.g., "anthropic"
-            prompt: The prompt text
-            messages: Optional list of messages for chat models
+            provider: 提供商名称，例如 "anthropic"
+            prompt: 提示文本
+            messages: 聊天模型的可选消息列表
             
         Returns:
-            A dictionary with the formatted prompt
+            包含格式化提示的字典
         """
         if provider == "anthropic":
             # Format for Claude models
@@ -193,6 +202,16 @@ class BedrockClient(ModelClient):
             return {"prompt": prompt}
 
     def _extract_response_text(self, provider: str, response: Dict[str, Any]) -> str:
+        """
+        从提供商的响应中提取文本。
+        
+        Args:
+            provider: 提供商名称
+            response: 响应字典
+            
+        Returns:
+            提取的文本内容
+        """
         """Extract the generated text from the response.
         
         Args:
@@ -224,7 +243,9 @@ class BedrockClient(ModelClient):
         max_time=5,
     )
     def call(self, api_kwargs: Dict = None, model_type: ModelType = None) -> Any:
-        """Make a synchronous call to the AWS Bedrock API."""
+        """
+        对 AWS Bedrock API 进行同步调用。
+        """
         api_kwargs = api_kwargs or {}
         
         # Check if client is initialized
@@ -290,7 +311,9 @@ class BedrockClient(ModelClient):
             raise ValueError(f"Model type {model_type} is not supported by AWS Bedrock client")
 
     async def acall(self, api_kwargs: Dict = None, model_type: ModelType = None) -> Any:
-        """Make an asynchronous call to the AWS Bedrock API."""
+        """
+        对 AWS Bedrock API 进行异步调用。
+        """
         # For now, just call the sync method
         # In a real implementation, you would use an async library or run the sync method in a thread pool
         return self.call(api_kwargs, model_type)
@@ -298,7 +321,9 @@ class BedrockClient(ModelClient):
     def convert_inputs_to_api_kwargs(
         self, input: Any = None, model_kwargs: Dict = None, model_type: ModelType = None
     ) -> Dict:
-        """Convert inputs to API kwargs for AWS Bedrock."""
+        """
+        将输入转换为 AWS Bedrock 的 API kwargs。
+        """
         model_kwargs = model_kwargs or {}
         api_kwargs = {}
         

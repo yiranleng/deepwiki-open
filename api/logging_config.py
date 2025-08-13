@@ -3,14 +3,26 @@ import os
 from pathlib import Path
 
 class IgnoreLogChangeDetectedFilter(logging.Filter):
+    """
+    忽略日志文件变更检测的过滤器。
+    """
     def filter(self, record: logging.LogRecord):
+        """
+        过滤包含 "Detected file change in" 的日志记录。
+
+        Args:
+            record: 日志记录
+
+        Returns:
+            bool: 如果不包含指定文本则返回 True，否则返回 False
+        """
         return "Detected file change in" not in record.getMessage()
 
 def setup_logging(format: str = None):
     """
-    Configure logging for the application.
-    Reads LOG_LEVEL and LOG_FILE_PATH from environment (defaults: INFO, logs/application.log).
-    Ensures log directory exists, and configures both file and console handlers.
+    为应用程序配置日志记录。
+    从环境变量读取 LOG_LEVEL 和 LOG_FILE_PATH（默认值：INFO, logs/application.log）。
+    确保日志目录存在，并配置文件和控制台处理器。
     """
     # Determine log directory and default file path
     base_dir = Path(__file__).parent

@@ -4,12 +4,12 @@ import sys
 
 def test_streaming_endpoint(repo_url, query, file_path=None):
     """
-    Test the streaming endpoint with a given repository URL and query.
+    使用给定的仓库 URL 和查询测试流式端点。
     
     Args:
-        repo_url (str): The GitHub repository URL
-        query (str): The query to send
-        file_path (str, optional): Path to a file in the repository
+        repo_url (str): GitHub 仓库 URL
+        query (str): 要发送的查询
+        file_path (str, optional): 仓库中文件的路径
     """
     # Define the API endpoint
     url = "http://localhost:8000/chat/completions/stream"

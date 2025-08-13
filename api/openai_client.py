@@ -1,4 +1,4 @@
-"""OpenAI ModelClient integration."""
+"""OpenAI模型客户端集成。"""
 
 import os
 import base64
@@ -19,7 +19,7 @@ import re
 import logging
 import backoff
 
-# optional import
+# 可选导入
 from adalflow.utils.lazy_import import safe_import, OptionalPackages
 from openai.types.chat.chat_completion import Choice
 
@@ -54,11 +54,19 @@ log = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-# completion parsing functions and you can combine them into one singple chat completion parser
+# 完成解析函数，您可以将它们组合成一个单一的聊天完成解析器
 def get_first_message_content(completion: ChatCompletion) -> str:
-    r"""When we only need the content of the first message.
-    It is the default parser for chat completion."""
-    log.debug(f"raw completion: {completion}")
+    """
+    当只需要第一条消息的内容时使用。
+    这是聊天完成的默认解析器。
+    
+    Args:
+        completion: 聊天完成对象
+        
+    Returns:
+        str: 第一条消息的内容
+    """
+    log.debug(f"原始完成: {completion}")
     return completion.choices[0].message.content
 
 
@@ -66,44 +74,76 @@ def get_first_message_content(completion: ChatCompletion) -> str:
 #     return completion.usage
 
 
-# A simple heuristic to estimate token count for estimating number of tokens in a Streaming response
+# 用于估算流式响应中token数量的简单启发式方法
 def estimate_token_count(text: str) -> int:
     """
-    Estimate the token count of a given text.
+    估算给定文本的 token 数量。
 
     Args:
-        text (str): The text to estimate token count for.
+        text (str): 要估算 token 数量的文本。
 
     Returns:
-        int: Estimated token count.
+        int: 估算的 token 数量。
     """
-    # Split the text into tokens using spaces as a simple heuristic
+    # 使用空格作为简单启发式方法将文本分割成token
     tokens = text.split()
 
-    # Return the number of tokens
+    # 返回token数量
     return len(tokens)
 
 
 def parse_stream_response(completion: ChatCompletionChunk) -> str:
-    r"""Parse the response of the stream API."""
+    """
+    解析流式 API 的响应。
+    
+    Args:
+        completion: 聊天完成块对象
+        
+    Returns:
+        str: 解析后的内容
+    """
     return completion.choices[0].delta.content
 
 
 def handle_streaming_response(generator: Stream[ChatCompletionChunk]):
-    r"""Handle the streaming response."""
+    """
+    处理流式响应。
+    
+    Args:
+        generator: 流式响应生成器
+        
+    Yields:
+        str: 解析后的内容块
+    """
     for completion in generator:
-        log.debug(f"Raw chunk completion: {completion}")
+        log.debug(f"原始块完成: {completion}")
         parsed_content = parse_stream_response(completion)
         yield parsed_content
 
 
 def get_all_messages_content(completion: ChatCompletion) -> List[str]:
-    r"""When the n > 1, get all the messages content."""
+    """
+    当 n > 1 时，获取所有消息内容。
+    
+    Args:
+        completion: 聊天完成对象
+        
+    Returns:
+        List[str]: 所有消息内容的列表
+    """
     return [c.message.content for c in completion.choices]
 
 
 def get_probabilities(completion: ChatCompletion) -> List[List[TokenLogProb]]:
-    r"""Get the probabilities of each token in the completion."""
+    """
+    获取完成中每个 token 的概率。
+    
+    Args:
+        completion: 聊天完成对象
+        
+    Returns:
+        List[List[TokenLogProb]]: 每个选择的token概率列表
+    """
     log_probs = []
     for c in completion.choices:
         content = c.logprobs.content
@@ -118,44 +158,44 @@ def get_probabilities(completion: ChatCompletion) -> List[List[TokenLogProb]]:
 
 
 class OpenAIClient(ModelClient):
-    __doc__ = r"""A component wrapper for the OpenAI API client.
+    __doc__ = r"""OpenAI API客户端的组件包装器。
 
-    Supports both embedding and chat completion APIs, including multimodal capabilities.
+    支持嵌入和聊天完成API，包括多模态功能。
 
-    Users can:
-    1. Simplify use of ``Embedder`` and ``Generator`` components by passing `OpenAIClient()` as the `model_client`.
-    2. Use this as a reference to create their own API client or extend this class by copying and modifying the code.
+    用户可以：
+    1. 通过将 `OpenAIClient()` 作为 `model_client` 传递来简化 ``Embedder`` 和 ``Generator`` 组件的使用。
+    2. 使用此作为参考来创建自己的API客户端或通过复制和修改代码来扩展此类。
 
-    Note:
-        We recommend avoiding `response_format` to enforce output data type or `tools` and `tool_choice` in `model_kwargs` when calling the API.
-        OpenAI's internal formatting and added prompts are unknown. Instead:
-        - Use :ref:`OutputParser<components-output_parsers>` for response parsing and formatting.
+    注意：
+        我们建议避免使用 `response_format` 来强制输出数据类型或在 `model_kwargs` 中使用 `tools` 和 `tool_choice`。
+        OpenAI的内部格式化和添加的提示是未知的。相反：
+        - 使用 :ref:`OutputParser<components-output_parsers>` 进行响应解析和格式化。
 
-        For multimodal inputs, provide images in `model_kwargs["images"]` as a path, URL, or list of them.
-        The model must support vision capabilities (e.g., `gpt-4o`, `gpt-4o-mini`, `o1`, `o1-mini`).
+        对于多模态输入，在 `model_kwargs["images"]` 中提供图像作为路径、URL或它们的列表。
+        模型必须支持视觉功能（例如，`gpt-4o`、`gpt-4o-mini`、`o1`、`o1-mini`）。
 
-        For image generation, use `model_type=ModelType.IMAGE_GENERATION` and provide:
-        - model: `"dall-e-3"` or `"dall-e-2"`
-        - prompt: Text description of the image to generate
-        - size: `"1024x1024"`, `"1024x1792"`, or `"1792x1024"` for DALL-E 3; `"256x256"`, `"512x512"`, or `"1024x1024"` for DALL-E 2
-        - quality: `"standard"` or `"hd"` (DALL-E 3 only)
-        - n: Number of images to generate (1 for DALL-E 3, 1-10 for DALL-E 2)
-        - response_format: `"url"` or `"b64_json"`
+        对于图像生成，使用 `model_type=ModelType.IMAGE_GENERATION` 并提供：
+        - model: `"dall-e-3"` 或 `"dall-e-2"`
+        - prompt: 要生成的图像的文本描述
+        - size: DALL-E 3 的 `"1024x1024"`、`"1024x1792"` 或 `"1792x1024"`；DALL-E 2 的 `"256x256"`、`"512x512"` 或 `"1024x1024"`
+        - quality: `"standard"` 或 `"hd"`（仅限DALL-E 3）
+        - n: 要生成的图像数量（DALL-E 3为1，DALL-E 2为1-10）
+        - response_format: `"url"` 或 `"b64_json"`
 
     Args:
-        api_key (Optional[str], optional): OpenAI API key. Defaults to `None`.
-        chat_completion_parser (Callable[[Completion], Any], optional): A function to parse the chat completion into a `str`. Defaults to `None`.
-            The default parser is `get_first_message_content`.
-        base_url (str): The API base URL to use when initializing the client.
-            Defaults to `"https://api.openai.com"`, but can be customized for third-party API providers or self-hosted models.
-        env_api_key_name (str): The environment variable name for the API key. Defaults to `"OPENAI_API_KEY"`.
+        api_key (Optional[str], optional): OpenAI API密钥。默认为 `None`。
+        chat_completion_parser (Callable[[Completion], Any], optional): 将聊天完成解析为 `str` 的函数。默认为 `None`。
+            默认解析器是 `get_first_message_content`。
+        base_url (str): 初始化客户端时使用的API基础URL。
+            默认为 `"https://api.openai.com"`，但可以为第三方API提供商或自托管模型自定义。
+        env_api_key_name (str): API密钥的环境变量名称。默认为 `"OPENAI_API_KEY"`。
 
-    References:
-        - OpenAI API Overview: https://platform.openai.com/docs/introduction
-        - Embeddings Guide: https://platform.openai.com/docs/guides/embeddings
-        - Chat Completion Models: https://platform.openai.com/docs/guides/text-generation
-        - Vision Models: https://platform.openai.com/docs/guides/vision
-        - Image Generation: https://platform.openai.com/docs/guides/images
+    参考：
+        - OpenAI API概述: https://platform.openai.com/docs/introduction
+        - 嵌入指南: https://platform.openai.com/docs/guides/embeddings
+        - 聊天完成模型: https://platform.openai.com/docs/guides/text-generation
+        - 视觉模型: https://platform.openai.com/docs/guides/vision
+        - 图像生成: https://platform.openai.com/docs/guides/images
     """
 
     def __init__(
@@ -167,12 +207,12 @@ class OpenAIClient(ModelClient):
         env_base_url_name: str = "OPENAI_BASE_URL",
         env_api_key_name: str = "OPENAI_API_KEY",
     ):
-        r"""It is recommended to set the OPENAI_API_KEY environment variable instead of passing it as an argument.
+        r"""建议设置OPENAI_API_KEY环境变量而不是作为参数传递。
 
         Args:
-            api_key (Optional[str], optional): OpenAI API key. Defaults to None.
-            base_url (str): The API base URL to use when initializing the client.
-            env_api_key_name (str): The environment variable name for the API key. Defaults to `"OPENAI_API_KEY"`.
+            api_key (Optional[str], optional): OpenAI API密钥。默认为None。
+            base_url (str): 初始化客户端时使用的API基础URL。
+            env_api_key_name (str): API密钥的环境变量名称。默认为 `"OPENAI_API_KEY"`。
         """
         super().__init__()
         self._api_key = api_key
@@ -180,14 +220,23 @@ class OpenAIClient(ModelClient):
         self._env_base_url_name = env_base_url_name
         self.base_url = base_url or os.getenv(self._env_base_url_name, "https://api.openai.com/v1")
         self.sync_client = self.init_sync_client()
-        self.async_client = None  # only initialize if the async call is called
+        self.async_client = None  # 仅在调用异步调用时初始化
         self.chat_completion_parser = (
             chat_completion_parser or get_first_message_content
         )
         self._input_type = input_type
-        self._api_kwargs = {}  # add api kwargs when the OpenAI Client is called
+        self._api_kwargs = {}  # 当调用OpenAI客户端时添加api kwargs
 
     def init_sync_client(self):
+        """
+        初始化同步客户端。
+        
+        Returns:
+            OpenAI: 配置好的 OpenAI 同步客户端
+            
+        Raises:
+            ValueError: 如果未设置 API 密钥环境变量
+        """
         api_key = self._api_key or os.getenv(self._env_api_key_name)
         if not api_key:
             raise ValueError(
@@ -196,6 +245,15 @@ class OpenAIClient(ModelClient):
         return OpenAI(api_key=api_key, base_url=self.base_url)
 
     def init_async_client(self):
+        """
+        初始化异步客户端。
+        
+        Returns:
+            AsyncOpenAI: 配置好的 OpenAI 异步客户端
+            
+        Raises:
+            ValueError: 如果未设置 API 密钥环境变量
+        """
         api_key = self._api_key or os.getenv(self._env_api_key_name)
         if not api_key:
             raise ValueError(
@@ -219,7 +277,9 @@ class OpenAIClient(ModelClient):
         self,
         completion: Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]],
     ) -> "GeneratorOutput":
-        """Parse the completion, and put it into the raw_response."""
+        """
+        解析完成结果，并将其放入 raw_response。
+        """
         log.debug(f"completion: {completion}, parser: {self.chat_completion_parser}")
         try:
             data = self.chat_completion_parser(completion)
@@ -240,6 +300,12 @@ class OpenAIClient(ModelClient):
         self,
         completion: Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]],
     ) -> CompletionUsage:
+        """
+        跟踪完成结果的使用情况。
+        
+        Returns:
+            CompletionUsage: 包含 token 使用情况的对象
+        """
 
         try:
             usage: CompletionUsage = CompletionUsage(
@@ -257,9 +323,10 @@ class OpenAIClient(ModelClient):
     def parse_embedding_response(
         self, response: CreateEmbeddingResponse
     ) -> EmbedderOutput:
-        r"""Parse the embedding response to a structure Adalflow components can understand.
+        """
+        将嵌入响应解析为 Adalflow 组件可以理解的结构。
 
-        Should be called in ``Embedder``.
+        应该在 ``Embedder`` 中调用。
         """
         try:
             return parse_embedding_response(response)
@@ -410,7 +477,7 @@ class OpenAIClient(ModelClient):
     )
     def call(self, api_kwargs: Dict = {}, model_type: ModelType = ModelType.UNDEFINED):
         """
-        kwargs is the combined input and model_kwargs.  Support streaming call.
+        kwargs 是输入和 model_kwargs 的组合。支持流式调用。
         """
         log.info(f"api_kwargs: {api_kwargs}")
         self._api_kwargs = api_kwargs
@@ -489,7 +556,7 @@ class OpenAIClient(ModelClient):
         self, api_kwargs: Dict = {}, model_type: ModelType = ModelType.UNDEFINED
     ):
         """
-        kwargs is the combined input and model_kwargs
+        kwargs 是输入和 model_kwargs 的组合
         """
         # store the api kwargs in the client
         self._api_kwargs = api_kwargs
@@ -536,38 +603,40 @@ class OpenAIClient(ModelClient):
         return output
 
     def _encode_image(self, image_path: str) -> str:
-        """Encode image to base64 string.
+        """
+        将图像编码为base64字符串。
 
         Args:
-            image_path: Path to image file.
+            image_path: 图像文件路径。
 
         Returns:
-            Base64 encoded image string.
+            str: Base64编码的图像字符串。
 
         Raises:
-            ValueError: If the file cannot be read or doesn't exist.
+            ValueError: 如果文件无法读取或不存在。
         """
         try:
             with open(image_path, "rb") as image_file:
                 return base64.b64encode(image_file.read()).decode("utf-8")
         except FileNotFoundError:
-            raise ValueError(f"Image file not found: {image_path}")
+            raise ValueError(f"图像文件未找到: {image_path}")
         except PermissionError:
-            raise ValueError(f"Permission denied when reading image file: {image_path}")
+            raise ValueError(f"读取图像文件时权限被拒绝: {image_path}")
         except Exception as e:
-            raise ValueError(f"Error encoding image {image_path}: {str(e)}")
+            raise ValueError(f"编码图像 {image_path} 时出错: {str(e)}")
 
     def _prepare_image_content(
         self, image_source: Union[str, Dict[str, Any]], detail: str = "auto"
     ) -> Dict[str, Any]:
-        """Prepare image content for API request.
+        """
+        为API请求准备图像内容。
 
         Args:
-            image_source: Either a path to local image or a URL.
-            detail: Image detail level ('auto', 'low', or 'high').
+            image_source: 本地图像路径或URL。
+            detail: 图像细节级别（'auto'、'low' 或 'high'）。
 
         Returns:
-            Formatted image content for API request.
+            Dict[str, Any]: 格式化的图像内容，用于API请求。
         """
         if isinstance(image_source, str):
             if image_source.startswith(("http://", "https://")):
@@ -587,7 +656,7 @@ class OpenAIClient(ModelClient):
         return image_source
 
 
-# Example usage:
+# 使用示例:
 if __name__ == "__main__":
     from adalflow.core import Generator
     from adalflow.utils import setup_env
@@ -607,7 +676,7 @@ if __name__ == "__main__":
     # for genout in gen_response.data:
     #     print(f"genout: {genout}")
 
-    # test that to_dict and from_dict works
+    # 测试to_dict和from_dict是否正常工作
     # model_client = OpenAIClient()
     # model_client_dict = model_client.to_dict()
     # from_dict_model_client = OpenAIClient.from_dict(model_client_dict)
@@ -617,7 +686,7 @@ if __name__ == "__main__":
 if __name__ == "__main__":
     import adalflow as adal
 
-    # setup env or pass the api_key
+    # 设置环境或传递api_key
     from adalflow.utils import setup_env
 
     setup_env()

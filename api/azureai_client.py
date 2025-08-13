@@ -1,4 +1,4 @@
-"""AzureOpenAI ModelClient integration."""
+"""AzureOpenAI模型客户端集成。"""
 
 import os
 from typing import (
@@ -18,23 +18,23 @@ import re
 import logging
 import backoff
 
-# optional import
+# 可选导入
 from adalflow.utils.lazy_import import safe_import, OptionalPackages
 
 import sys
 
 openai = safe_import(OptionalPackages.OPENAI.value[0], OptionalPackages.OPENAI.value[1])
-# Importing all Azure packages together
+# 一起导入所有Azure包
 azure_modules = safe_import(
-    OptionalPackages.AZURE.value[0],  # List of package names
-    OptionalPackages.AZURE.value[1],  # Error message
+    OptionalPackages.AZURE.value[0],  # 包名列表
+    OptionalPackages.AZURE.value[1],  # 错误消息
 )
-# Manually add each module to sys.modules to make them available globally as if imported normally
+# 手动将每个模块添加到sys.modules中，使其可以全局使用，就像正常导入一样
 azure_module_names = OptionalPackages.AZURE.value[0]
 for name, module in zip(azure_module_names, azure_modules):
     sys.modules[name] = module
 
-# Use the modules as if they were imported normally
+# 像正常导入一样使用模块
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 
 # from azure.core.credentials import AccessToken
@@ -68,13 +68,13 @@ T = TypeVar("T")
 
 __all__ = ["AzureAIClient"]
 
-# TODO: this overlaps with openai client largely, might need to refactor to subclass openai client to simplify the code
+# TODO: 这与openai客户端有很大重叠，可能需要重构为继承openai客户端以简化代码
 
 
-# completion parsing functions and you can combine them into one singple chat completion parser
+# 完成解析函数，您可以将它们组合成一个单一的聊天完成解析器
 def get_first_message_content(completion: ChatCompletion) -> str:
-    r"""When we only need the content of the first message.
-    It is the default parser for chat completion."""
+    r"""当只需要第一条消息的内容时使用。
+    这是聊天完成的默认解析器。"""
     return completion.choices[0].message.content
 
 
@@ -83,20 +83,20 @@ def get_first_message_content(completion: ChatCompletion) -> str:
 
 
 def parse_stream_response(completion: ChatCompletionChunk) -> str:
-    r"""Parse the response of the stream API."""
+    r"""解析流式API的响应。"""
     return completion.choices[0].delta.content
 
 
 def handle_streaming_response(generator: Stream[ChatCompletionChunk]):
-    r"""Handle the streaming response."""
+    r"""处理流式响应。"""
     for completion in generator:
-        log.debug(f"Raw chunk completion: {completion}")
+        log.debug(f"原始块完成: {completion}")
         parsed_content = parse_stream_response(completion)
         yield parsed_content
 
 
 def get_all_messages_content(completion: ChatCompletion) -> List[str]:
-    r"""When the n > 1, get all the messages content."""
+    r"""当 n > 1 时，获取所有消息内容。"""
     return [c.message.content for c in completion.choices]
 
 

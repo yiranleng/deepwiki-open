@@ -1,4 +1,4 @@
-"""Dashscope (Alibaba Cloud) ModelClient integration."""
+"""Dashscope（阿里云）模型客户端集成。"""
 
 import os
 import pickle
@@ -19,7 +19,7 @@ import backoff
 from copy import deepcopy
 from tqdm import tqdm
 
-# optional import
+# 可选导入
 from adalflow.utils.lazy_import import safe_import, OptionalPackages
 
 openai = safe_import(OptionalPackages.OPENAI.value[0], OptionalPackages.OPENAI.value[1])
@@ -59,14 +59,22 @@ from adalflow.components.model_client.utils import parse_embedding_response
 
 from api.logging_config import setup_logging
 
-# # Disable tqdm progress bars
+# # 禁用tqdm进度条
 # os.environ["TQDM_DISABLE"] = "1"
 
 setup_logging()
 log = logging.getLogger(__name__)
 
 def get_first_message_content(completion: ChatCompletion) -> str:
-    """When we only need the content of the first message."""
+    """
+    当只需要第一条消息的内容时使用。
+    
+    Args:
+        completion: 聊天完成对象
+        
+    Returns:
+        str: 第一条消息的内容
+    """
     log.info(f"🔍 get_first_message_content called with: {type(completion)}")
     log.debug(f"raw completion: {completion}")
     
@@ -89,12 +97,22 @@ def get_first_message_content(completion: ChatCompletion) -> str:
 
 
 def parse_stream_response(completion: ChatCompletionChunk) -> str:
-    """Parse the response of the stream API."""
+    """
+    解析流式 API 的响应。
+    
+    Args:
+        completion: 聊天完成块对象
+        
+    Returns:
+        str: 解析后的内容
+    """
     return completion.choices[0].delta.content
 
 
 def handle_streaming_response(generator: Stream[ChatCompletionChunk]):
-    """Handle the streaming response."""
+    """
+    处理流式响应。
+    """
     for completion in generator:
         log.debug(f"Raw chunk completion: {completion}")
         parsed_content = parse_stream_response(completion)
@@ -102,19 +120,20 @@ def handle_streaming_response(generator: Stream[ChatCompletionChunk]):
 
 
 class DashscopeClient(ModelClient):
-    """A component wrapper for the Dashscope (Alibaba Cloud) API client.
+    """
+    Dashscope（阿里云）API 客户端的组件包装器。
 
-    Dashscope provides access to Alibaba Cloud's Qwen and other models through an OpenAI-compatible API.
+    Dashscope 通过 OpenAI 兼容的 API 提供对阿里云 Qwen 和其他模型的访问。
     
     Args:
-        api_key (Optional[str], optional): Dashscope API key. Defaults to None.
-        workspace_id (Optional[str], optional): Dashscope workspace ID. Defaults to None.
-        base_url (str): The API base URL. Defaults to "https://dashscope.aliyuncs.com/compatible-mode/v1".
-        env_api_key_name (str): Environment variable name for the API key. Defaults to "DASHSCOPE_API_KEY".
-        env_workspace_id_name (str): Environment variable name for the workspace ID. Defaults to "DASHSCOPE_WORKSPACE_ID".
+        api_key (Optional[str], optional): Dashscope API 密钥。默认为 None。
+        workspace_id (Optional[str], optional): Dashscope 工作空间 ID。默认为 None。
+        base_url (str): API 基础 URL。默认为 "https://dashscope.aliyuncs.com/compatible-mode/v1"。
+        env_api_key_name (str): API 密钥的环境变量名。默认为 "DASHSCOPE_API_KEY"。
+        env_workspace_id_name (str): 工作空间 ID 的环境变量名。默认为 "DASHSCOPE_WORKSPACE_ID"。
 
     References:
-        - Dashscope API Documentation: https://help.aliyun.com/zh/dashscope/
+        - Dashscope API 文档: https://help.aliyun.com/zh/dashscope/
     """
 
     def __init__(
@@ -145,13 +164,13 @@ class DashscopeClient(ModelClient):
 
     def _prepare_client_config(self):
         """
-        Private helper method to prepare client configuration.
+        准备客户端配置的私有辅助方法。
         
         Returns:
-            tuple: (api_key, workspace_id, base_url) for client initialization
+            tuple: 用于客户端初始化的 (api_key, workspace_id, base_url)
         
         Raises:
-            ValueError: If API key is not provided
+            ValueError: 如果未提供 API 密钥
         """
         api_key = self._api_key or os.getenv(self._env_api_key_name)
         workspace_id = self._workspace_id or os.getenv(self._env_workspace_id_name)
@@ -173,6 +192,12 @@ class DashscopeClient(ModelClient):
         return api_key, workspace_id, base_url
 
     def init_sync_client(self):
+        """
+        初始化同步客户端。
+        
+        Returns:
+            OpenAI: 配置好的 OpenAI 同步客户端
+        """
         api_key, workspace_id, base_url = self._prepare_client_config()
         
         client = OpenAI(api_key=api_key, base_url=base_url)
@@ -184,6 +209,12 @@ class DashscopeClient(ModelClient):
         return client
 
     def init_async_client(self):
+        """
+        初始化异步客户端。
+        
+        Returns:
+            AsyncOpenAI: 配置好的 OpenAI 异步客户端
+        """
         api_key, workspace_id, base_url = self._prepare_client_config()
         
         client = AsyncOpenAI(api_key=api_key, base_url=base_url)
@@ -198,7 +229,9 @@ class DashscopeClient(ModelClient):
         self,
         completion: Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]],
     ) -> "GeneratorOutput":
-        """Parse the completion response to a GeneratorOutput."""
+        """
+        将完成响应解析为 GeneratorOutput。
+        """
         try:
             # If the completion is already a GeneratorOutput, return it directly (prevent recursion)
             if isinstance(completion, GeneratorOutput):
@@ -389,7 +422,9 @@ class DashscopeClient(ModelClient):
         max_time=5,
     )
     def call(self, api_kwargs: Dict = {}, model_type: ModelType = ModelType.UNDEFINED):
-        """Call the Dashscope API."""
+        """
+        调用 Dashscope API。
+        """
         if model_type == ModelType.LLM:
             if not api_kwargs.get("stream", False):
                 # For non-streaming, enable_thinking must be false.
@@ -597,11 +632,15 @@ class DashscopeClient(ModelClient):
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
-        """Create an instance from a dictionary."""
+        """
+        从字典创建实例。
+        """
         return cls(**data)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
+        """
+        转换为字典。
+        """
         return {
             "api_key": self._api_key,
             "workspace_id": self._workspace_id,
@@ -611,8 +650,8 @@ class DashscopeClient(ModelClient):
 
     def __getstate__(self):
         """
-        Customize serialization to exclude non-picklable client objects.
-        This method is called by pickle when saving the object's state.
+        自定义序列化以排除不可 pickle 的客户端对象。
+        当 pickle 保存对象状态时调用此方法。
         """
         state = self.__dict__.copy()
         # Remove the unpicklable client instances
@@ -624,8 +663,8 @@ class DashscopeClient(ModelClient):
 
     def __setstate__(self, state):
         """
-        Customize deserialization to re-create the client objects.
-        This method is called by pickle when loading the object's state.
+        自定义反序列化以重新创建客户端对象。
+        当 pickle 加载对象状态时调用此方法。
         """
         self.__dict__.update(state)
         # Re-initialize the clients after unpickling
@@ -634,13 +673,13 @@ class DashscopeClient(ModelClient):
 
 
 class DashScopeEmbedder(DataComponent):
-    r"""
-    A user-facing component that orchestrates an embedder model via the DashScope model client and output processors.
+    """
+    通过 DashScope 模型客户端和输出处理器编排嵌入器模型的用户面向组件。
 
     Args:
-        model_client (ModelClient): The DashScope model client to use for the embedder.
-        model_kwargs (Dict[str, Any], optional): The model kwargs to pass to the model client. Defaults to {}.
-        output_processors (Optional[Component], optional): The output processors after model call. Defaults to None.
+        model_client (ModelClient): 用于嵌入器的 DashScope 模型客户端。
+        model_kwargs (Dict[str, Any], optional): 传递给模型客户端的模型 kwargs。默认为 {}。
+        output_processors (Optional[Component], optional): 模型调用后的输出处理器。默认为 None。
     """
 
     model_type: ModelType = ModelType.EMBEDDER
@@ -719,7 +758,9 @@ class DashScopeEmbedder(DataComponent):
 
 # Batch Embedding Components for DashScope
 class DashScopeBatchEmbedder(DataComponent):
-    """Batch embedder specifically designed for DashScope API"""
+    """
+    专门为 DashScope API 设计的批量嵌入器
+    """
 
     def __init__(self, embedder, batch_size: int = 100, embedding_cache_file_name: str = "default") -> None:
         super().__init__(batch_size=batch_size)
@@ -817,7 +858,9 @@ class DashScopeBatchEmbedder(DataComponent):
 
 
 class DashScopeToEmbeddings(DataComponent):
-    """Component that converts document sequences to embedding vector sequences, specifically optimized for DashScope API"""
+    """
+    将文档序列转换为嵌入向量序列的组件，专门为 DashScope API 优化
+    """
 
     def __init__(self, embedder, batch_size: int = 100, force_recreate_db: bool = False, embedding_cache_file_name: str = "default") -> None:
         super().__init__(batch_size=batch_size)
@@ -828,13 +871,13 @@ class DashScopeToEmbeddings(DataComponent):
 
     def __call__(self, input: List[Document]) -> List[Document]:
         """
-        Process list of documents, generating embedding vectors for each document
+        处理文档列表，为每个文档生成嵌入向量
         
         Args:
-            input: List of input documents
+            input: 输入文档列表
             
         Returns:
-            List of documents containing embedding vectors
+            包含嵌入向量的文档列表
         """
         output = deepcopy(input)
         

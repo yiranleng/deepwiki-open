@@ -25,73 +25,84 @@ from api.prompts import (
     SIMPLE_CHAT_SYSTEM_PROMPT
 )
 
-# Configure logging
+# 配置日志记录
 from api.logging_config import setup_logging
 
 setup_logging()
 logger = logging.getLogger(__name__)
 
 
-# Initialize FastAPI app
+# 初始化FastAPI应用
 app = FastAPI(
-    title="Simple Chat API",
-    description="Simplified API for streaming chat completions"
+    title="简单聊天API",
+    description="用于流式聊天完成的简化API"
 )
 
-# Configure CORS
+# 配置CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["*"],  # 允许所有来源
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],  # 允许所有方法
+    allow_headers=["*"],  # 允许所有头部
 )
 
-# Models for the API
+# API的数据模型
 class ChatMessage(BaseModel):
-    role: str  # 'user' or 'assistant'
+    """
+    聊天消息的数据模型。
+    """
+    role: str  # 'user' 或 'assistant'
     content: str
 
 class ChatCompletionRequest(BaseModel):
     """
-    Model for requesting a chat completion.
+    请求聊天完成的数据模型。
     """
-    repo_url: str = Field(..., description="URL of the repository to query")
-    messages: List[ChatMessage] = Field(..., description="List of chat messages")
-    filePath: Optional[str] = Field(None, description="Optional path to a file in the repository to include in the prompt")
-    token: Optional[str] = Field(None, description="Personal access token for private repositories")
-    type: Optional[str] = Field("github", description="Type of repository (e.g., 'github', 'gitlab', 'bitbucket')")
+    repo_url: str = Field(..., description="要查询的仓库URL")
+    messages: List[ChatMessage] = Field(..., description="聊天消息列表")
+    filePath: Optional[str] = Field(None, description="要包含在提示中的仓库文件的可选路径")
+    token: Optional[str] = Field(None, description="私有仓库的个人访问令牌")
+    type: Optional[str] = Field("github", description="仓库类型（例如，'github'、'gitlab'、'bitbucket'）")
 
-    # model parameters
-    provider: str = Field("google", description="Model provider (google, openai, openrouter, ollama, bedrock, azure)")
-    model: Optional[str] = Field(None, description="Model name for the specified provider")
+    # 模型参数
+    provider: str = Field("google", description="模型提供商（google、openai、openrouter、ollama、bedrock、azure）")
+    model: Optional[str] = Field(None, description="指定提供商的模型名称")
 
-    language: Optional[str] = Field("en", description="Language for content generation (e.g., 'en', 'ja', 'zh', 'es', 'kr', 'vi')")
-    excluded_dirs: Optional[str] = Field(None, description="Comma-separated list of directories to exclude from processing")
-    excluded_files: Optional[str] = Field(None, description="Comma-separated list of file patterns to exclude from processing")
-    included_dirs: Optional[str] = Field(None, description="Comma-separated list of directories to include exclusively")
-    included_files: Optional[str] = Field(None, description="Comma-separated list of file patterns to include exclusively")
+    language: Optional[str] = Field("en", description="内容生成的语言（例如，'en'、'ja'、'zh'、'es'、'kr'、'vi'）")
+    excluded_dirs: Optional[str] = Field(None, description="要从处理中排除的目录的逗号分隔列表")
+    excluded_files: Optional[str] = Field(None, description="要从处理中排除的文件模式的逗号分隔列表")
+    included_dirs: Optional[str] = Field(None, description="要专门包含的目录的逗号分隔列表")
+    included_files: Optional[str] = Field(None, description="要专门包含的文件模式的逗号分隔列表")
 
 @app.post("/chat/completions/stream")
 async def chat_completions_stream(request: ChatCompletionRequest):
-    """Stream a chat completion response directly using Google Generative AI"""
+    """
+    使用 Google Generative AI 直接流式传输聊天完成响应。
+    
+    Args:
+        request: 聊天完成请求对象
+        
+    Returns:
+        StreamingResponse: 流式响应
+    """
     try:
-        # Check if request contains very large input
+        # 检查请求是否包含非常大的输入
         input_too_large = False
         if request.messages and len(request.messages) > 0:
             last_message = request.messages[-1]
             if hasattr(last_message, 'content') and last_message.content:
                 tokens = count_tokens(last_message.content, request.provider == "ollama")
-                logger.info(f"Request size: {tokens} tokens")
+                logger.info(f"请求大小: {tokens} 个token")
                 if tokens > 8000:
-                    logger.warning(f"Request exceeds recommended token limit ({tokens} > 7500)")
+                    logger.warning(f"请求超过推荐的token限制 ({tokens} > 7500)")
                     input_too_large = True
 
-        # Create a new RAG instance for this request
+        # 为此请求创建新的RAG实例
         try:
             request_rag = RAG(provider=request.provider, model=request.model)
 
-            # Extract custom file filter parameters if provided
+            # 如果提供了自定义文件过滤器参数则提取
             excluded_dirs = None
             excluded_files = None
             included_dirs = None
@@ -99,43 +110,43 @@ async def chat_completions_stream(request: ChatCompletionRequest):
 
             if request.excluded_dirs:
                 excluded_dirs = [unquote(dir_path) for dir_path in request.excluded_dirs.split('\n') if dir_path.strip()]
-                logger.info(f"Using custom excluded directories: {excluded_dirs}")
+                logger.info(f"使用自定义排除目录: {excluded_dirs}")
             if request.excluded_files:
                 excluded_files = [unquote(file_pattern) for file_pattern in request.excluded_files.split('\n') if file_pattern.strip()]
-                logger.info(f"Using custom excluded files: {excluded_files}")
+                logger.info(f"使用自定义排除文件: {excluded_files}")
             if request.included_dirs:
                 included_dirs = [unquote(dir_path) for dir_path in request.included_dirs.split('\n') if dir_path.strip()]
-                logger.info(f"Using custom included directories: {included_dirs}")
+                logger.info(f"使用自定义包含目录: {included_dirs}")
             if request.included_files:
                 included_files = [unquote(file_pattern) for file_pattern in request.included_files.split('\n') if file_pattern.strip()]
-                logger.info(f"Using custom included files: {included_files}")
+                logger.info(f"使用自定义包含文件: {included_files}")
 
             request_rag.prepare_retriever(request.repo_url, request.type, request.token, excluded_dirs, excluded_files, included_dirs, included_files)
-            logger.info(f"Retriever prepared for {request.repo_url}")
+            logger.info(f"为 {request.repo_url} 准备检索器")
         except ValueError as e:
             if "No valid documents with embeddings found" in str(e):
-                logger.error(f"No valid embeddings found: {str(e)}")
-                raise HTTPException(status_code=500, detail="No valid document embeddings found. This may be due to embedding size inconsistencies or API errors during document processing. Please try again or check your repository content.")
+                logger.error(f"未找到有效的文档嵌入: {str(e)}")
+                raise HTTPException(status_code=500, detail="未找到有效的文档嵌入。这可能是由于嵌入大小不一致或文档处理期间的API错误。请重试或检查您的仓库内容。")
             else:
-                logger.error(f"ValueError preparing retriever: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"Error preparing retriever: {str(e)}")
+                logger.error(f"准备检索器时发生ValueError: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"准备检索器时发生错误: {str(e)}")
         except Exception as e:
-            logger.error(f"Error preparing retriever: {str(e)}")
-            # Check for specific embedding-related errors
+            logger.error(f"准备检索器时发生错误: {str(e)}")
+            # 检查特定嵌入相关错误
             if "All embeddings should be of the same size" in str(e):
-                raise HTTPException(status_code=500, detail="Inconsistent embedding sizes detected. Some documents may have failed to embed properly. Please try again.")
+                raise HTTPException(status_code=500, detail="检测到不一致的嵌入大小。某些文档可能未能正确嵌入。请重试。")
             else:
-                raise HTTPException(status_code=500, detail=f"Error preparing retriever: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"准备检索器时发生错误: {str(e)}")
 
-        # Validate request
+        # 验证请求
         if not request.messages or len(request.messages) == 0:
-            raise HTTPException(status_code=400, detail="No messages provided")
+            raise HTTPException(status_code=400, detail="未提供消息")
 
         last_message = request.messages[-1]
         if last_message.role != "user":
-            raise HTTPException(status_code=400, detail="Last message must be from the user")
+            raise HTTPException(status_code=400, detail="最后一条消息必须是用户消息")
 
-        # Process previous messages to build conversation history
+        # 处理之前的消息以构建对话历史
         for i in range(0, len(request.messages) - 1, 2):
             if i + 1 < len(request.messages):
                 user_msg = request.messages[i]
@@ -147,66 +158,66 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                         assistant_response=assistant_msg.content
                     )
 
-        # Check if this is a Deep Research request
+        # 检查这是否是Deep Research请求
         is_deep_research = False
         research_iteration = 1
 
-        # Process messages to detect Deep Research requests
+        # 处理消息以检测Deep Research请求
         for msg in request.messages:
             if hasattr(msg, 'content') and msg.content and "[DEEP RESEARCH]" in msg.content:
                 is_deep_research = True
-                # Only remove the tag from the last message
+                # 仅从最后一条消息中移除标签
                 if msg == request.messages[-1]:
-                    # Remove the Deep Research tag
+                    # 移除Deep Research标签
                     msg.content = msg.content.replace("[DEEP RESEARCH]", "").strip()
 
-        # Count research iterations if this is a Deep Research request
+        # 如果这是Deep Research请求，则计算研究迭代次数
         if is_deep_research:
             research_iteration = sum(1 for msg in request.messages if msg.role == 'assistant') + 1
-            logger.info(f"Deep Research request detected - iteration {research_iteration}")
+            logger.info(f"检测到Deep Research请求 - 迭代 {research_iteration}")
 
-            # Check if this is a continuation request
+            # 检查这是否是延续请求
             if "continue" in last_message.content.lower() and "research" in last_message.content.lower():
-                # Find the original topic from the first user message
+                # 从第一个用户消息中找到原始主题
                 original_topic = None
                 for msg in request.messages:
                     if msg.role == "user" and "continue" not in msg.content.lower():
                         original_topic = msg.content.replace("[DEEP RESEARCH]", "").strip()
-                        logger.info(f"Found original research topic: {original_topic}")
+                        logger.info(f"找到原始研究主题: {original_topic}")
                         break
 
                 if original_topic:
-                    # Replace the continuation message with the original topic
+                    # 用原始主题替换延续消息
                     last_message.content = original_topic
-                    logger.info(f"Using original topic for research: {original_topic}")
+                    logger.info(f"使用原始主题进行研究: {original_topic}")
 
-        # Get the query from the last message
+        # 获取最后一条消息的查询
         query = last_message.content
 
-        # Only retrieve documents if input is not too large
+        # 仅在输入不是太大时才检索文档
         context_text = ""
         retrieved_documents = None
 
         if not input_too_large:
             try:
-                # If filePath exists, modify the query for RAG to focus on the file
+                # 如果filePath存在，则修改RAG查询以专注于文件
                 rag_query = query
                 if request.filePath:
-                    # Use the file path to get relevant context about the file
-                    rag_query = f"Contexts related to {request.filePath}"
-                    logger.info(f"Modified RAG query to focus on file: {request.filePath}")
+                    # 使用文件路径获取与文件相关的上下文
+                    rag_query = f"与 {request.filePath} 相关的上下文"
+                    logger.info(f"修改RAG查询以专注于文件: {request.filePath}")
 
-                # Try to perform RAG retrieval
+                # 尝试执行RAG检索
                 try:
-                    # This will use the actual RAG implementation
+                    # 这将使用实际的RAG实现
                     retrieved_documents = request_rag(rag_query, language=request.language)
 
                     if retrieved_documents and retrieved_documents[0].documents:
-                        # Format context for the prompt in a more structured way
+                        # 以更结构化的方式格式化上下文用于提示
                         documents = retrieved_documents[0].documents
-                        logger.info(f"Retrieved {len(documents)} documents")
+                        logger.info(f"检索到 {len(documents)} 个文档")
 
-                        # Group documents by file path
+                        # 按文件路径分组文档
                         docs_by_file = {}
                         for doc in documents:
                             file_path = doc.meta_data.get('file_path', 'unknown')
@@ -214,46 +225,46 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                                 docs_by_file[file_path] = []
                             docs_by_file[file_path].append(doc)
 
-                        # Format context text with file path grouping
+                        # 以文件路径分组格式化上下文文本
                         context_parts = []
                         for file_path, docs in docs_by_file.items():
-                            # Add file header with metadata
-                            header = f"## File Path: {file_path}\n\n"
-                            # Add document content
+                            # 添加文件头，包含元数据
+                            header = f"## 文件路径: {file_path}\n\n"
+                            # 添加文档内容
                             content = "\n\n".join([doc.text for doc in docs])
 
                             context_parts.append(f"{header}{content}")
 
-                        # Join all parts with clear separation
+                        # 用清晰的分割连接所有部分
                         context_text = "\n\n" + "-" * 10 + "\n\n".join(context_parts)
                     else:
-                        logger.warning("No documents retrieved from RAG")
+                        logger.warning("未从RAG检索到文档")
                 except Exception as e:
-                    logger.error(f"Error in RAG retrieval: {str(e)}")
-                    # Continue without RAG if there's an error
+                    logger.error(f"RAG检索时发生错误: {str(e)}")
+                    # 如果发生错误，则继续不使用RAG
 
             except Exception as e:
-                logger.error(f"Error retrieving documents: {str(e)}")
+                logger.error(f"检索文档时发生错误: {str(e)}")
                 context_text = ""
 
-        # Get repository information
+        # 获取仓库信息
         repo_url = request.repo_url
         repo_name = repo_url.split("/")[-1] if "/" in repo_url else repo_url
 
-        # Determine repository type
+        # 确定仓库类型
         repo_type = request.type
 
-        # Get language information
+        # 获取语言信息
         language_code = request.language or configs["lang_config"]["default"]
         supported_langs = configs["lang_config"]["supported_languages"]
         language_name = supported_langs.get(language_code, "English")
 
-        # Create system prompt
+        # 创建系统提示
         if is_deep_research:
-            # Check if this is the first iteration
+            # 检查这是否是第一次迭代
             is_first_iteration = research_iteration == 1
 
-            # Check if this is the final iteration
+            # 检查这是否是最终迭代
             is_final_iteration = research_iteration >= 5
 
             if is_first_iteration:
@@ -287,42 +298,42 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                 language_name=language_name
             )
 
-        # Fetch file content if provided
+        # 如果提供了文件内容，则获取
         file_content = ""
         if request.filePath:
             try:
                 file_content = get_file_content(request.repo_url, request.filePath, request.type, request.token)
-                logger.info(f"Successfully retrieved content for file: {request.filePath}")
+                logger.info(f"成功检索文件内容: {request.filePath}")
             except Exception as e:
-                logger.error(f"Error retrieving file content: {str(e)}")
-                # Continue without file content if there's an error
+                logger.error(f"检索文件内容时发生错误: {str(e)}")
+                # 如果发生错误，则继续不使用文件内容
 
-        # Format conversation history
+        # 格式化对话历史
         conversation_history = ""
         for turn_id, turn in request_rag.memory().items():
             if not isinstance(turn_id, int) and hasattr(turn, 'user_query') and hasattr(turn, 'assistant_response'):
                 conversation_history += f"<turn>\n<user>{turn.user_query.query_str}</user>\n<assistant>{turn.assistant_response.response_str}</assistant>\n</turn>\n"
 
-        # Create the prompt with context
+        # 创建包含上下文的提示
         prompt = f"/no_think {system_prompt}\n\n"
 
         if conversation_history:
             prompt += f"<conversation_history>\n{conversation_history}</conversation_history>\n\n"
 
-        # Check if filePath is provided and fetch file content if it exists
+        # 检查filePath是否提供且如果存在则获取文件内容
         if file_content:
-            # Add file content to the prompt after conversation history
+            # 在对话历史后添加文件内容到提示
             prompt += f"<currentFileContent path=\"{request.filePath}\">\n{file_content}\n</currentFileContent>\n\n"
 
-        # Only include context if it's not empty
+        # 仅在上下文不为空时才包含上下文
         CONTEXT_START = "<START_OF_CONTEXT>"
         CONTEXT_END = "<END_OF_CONTEXT>"
         if context_text.strip():
             prompt += f"{CONTEXT_START}\n{context_text}\n{CONTEXT_END}\n\n"
         else:
-            # Add a note that we're skipping RAG due to size constraints or because it's the isolated API
-            logger.info("No context available from RAG")
-            prompt += "<note>Answering without retrieval augmentation.</note>\n\n"
+            # 添加一条提示，说明我们跳过RAG，因为输入大小限制或是因为它是孤立的API
+            logger.info("未从RAG获取上下文")
+            prompt += "<note>由于输入大小限制或因为它是孤立的API，跳过检索增强。</note>\n\n"
 
         prompt += f"<query>\n{query}\n</query>\n\nAssistant: "
 
@@ -348,12 +359,12 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                 model_type=ModelType.LLM
             )
         elif request.provider == "openrouter":
-            logger.info(f"Using OpenRouter with model: {request.model}")
+            logger.info(f"使用OpenRouter与模型: {request.model}")
 
-            # Check if OpenRouter API key is set
+            # 检查OpenRouter API密钥是否已设置
             if not OPENROUTER_API_KEY:
-                logger.warning("OPENROUTER_API_KEY not configured, but continuing with request")
-                # We'll let the OpenRouterClient handle this and return a friendly error message
+                logger.warning("OPENROUTER_API_KEY未配置，但继续请求")
+                # 我们将让OpenRouterClient处理此问题并返回友好的错误消息
 
             model = OpenRouterClient()
             model_kwargs = {
@@ -361,7 +372,7 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                 "stream": True,
                 "temperature": model_config["temperature"]
             }
-            # Only add top_p if it exists in the model config
+            # 仅在模型配置中存在top_p时才添加top_p
             if "top_p" in model_config:
                 model_kwargs["top_p"] = model_config["top_p"]
 
@@ -371,21 +382,21 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                 model_type=ModelType.LLM
             )
         elif request.provider == "openai":
-            logger.info(f"Using Openai protocol with model: {request.model}")
+            logger.info(f"使用Openai协议与模型: {request.model}")
 
-            # Check if an API key is set for Openai
+            # 检查Openai API密钥是否已设置
             if not OPENAI_API_KEY:
-                logger.warning("OPENAI_API_KEY not configured, but continuing with request")
-                # We'll let the OpenAIClient handle this and return an error message
+                logger.warning("OPENAI_API_KEY未配置，但继续请求")
+                # 我们将让OpenAIClient处理此问题并返回错误消息
 
-            # Initialize Openai client
+            # 初始化Openai客户端
             model = OpenAIClient()
             model_kwargs = {
                 "model": request.model,
                 "stream": True,
                 "temperature": model_config["temperature"]
             }
-            # Only add top_p if it exists in the model config
+            # 仅在模型配置中存在top_p时才添加top_p
             if "top_p" in model_config:
                 model_kwargs["top_p"] = model_config["top_p"]
 
@@ -395,14 +406,14 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                 model_type=ModelType.LLM
             )
         elif request.provider == "bedrock":
-            logger.info(f"Using AWS Bedrock with model: {request.model}")
+            logger.info(f"使用AWS Bedrock与模型: {request.model}")
 
-            # Check if AWS credentials are set
+            # 检查AWS凭证是否已设置
             if not AWS_ACCESS_KEY_ID or not AWS_SECRET_ACCESS_KEY:
-                logger.warning("AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY not configured, but continuing with request")
-                # We'll let the BedrockClient handle this and return an error message
+                logger.warning("AWS_ACCESS_KEY_ID或AWS_SECRET_ACCESS_KEY未配置，但继续请求")
+                # 我们将让BedrockClient处理此问题并返回错误消息
 
-            # Initialize Bedrock client
+            # 初始化Bedrock客户端
             model = BedrockClient()
             model_kwargs = {
                 "model": request.model,
@@ -416,9 +427,9 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                 model_type=ModelType.LLM
             )
         elif request.provider == "azure":
-            logger.info(f"Using Azure AI with model: {request.model}")
+            logger.info(f"使用Azure AI与模型: {request.model}")
 
-            # Initialize Azure AI client
+            # 初始化Azure AI客户端
             model = AzureAIClient()
             model_kwargs = {
                 "model": request.model,
@@ -433,7 +444,7 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                 model_type=ModelType.LLM
             )
         else:
-            # Initialize Google Generative AI model
+            # 初始化Google Generative AI模型
             model = genai.GenerativeModel(
                 model_name=model_config["model"],
                 generation_config={
@@ -443,13 +454,13 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                 }
             )
 
-        # Create a streaming response
+        # 创建流式响应
         async def response_stream():
             try:
                 if request.provider == "ollama":
-                    # Get the response and handle it properly using the previously created api_kwargs
+                    # 获取响应并使用之前创建的api_kwargs处理
                     response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
-                    # Handle streaming response from Ollama
+                    # 处理Ollama的流式响应
                     async for chunk in response:
                         text = getattr(chunk, 'response', None) or getattr(chunk, 'text', None) or str(chunk)
                         if text and not text.startswith('model=') and not text.startswith('created_at='):
@@ -457,21 +468,21 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                             yield text
                 elif request.provider == "openrouter":
                     try:
-                        # Get the response and handle it properly using the previously created api_kwargs
+                        # 获取响应并使用之前创建的api_kwargs处理
                         logger.info("Making OpenRouter API call")
                         response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
-                        # Handle streaming response from OpenRouter
+                        # 处理OpenRouter的流式响应
                         async for chunk in response:
                             yield chunk
                     except Exception as e_openrouter:
-                        logger.error(f"Error with OpenRouter API: {str(e_openrouter)}")
-                        yield f"\nError with OpenRouter API: {str(e_openrouter)}\n\nPlease check that you have set the OPENROUTER_API_KEY environment variable with a valid API key."
+                        logger.error(f"OpenRouter API错误: {str(e_openrouter)}")
+                        yield f"\nOpenRouter API错误: {str(e_openrouter)}\n\n请检查是否已设置OPENROUTER_API_KEY环境变量，并使用有效的API密钥。"
                 elif request.provider == "openai":
                     try:
-                        # Get the response and handle it properly using the previously created api_kwargs
+                        # 获取响应并使用之前创建的api_kwargs处理
                         logger.info("Making Openai API call")
                         response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
-                        # Handle streaming response from Openai
+                        # 处理Openai的流式响应
                         async for chunk in response:
                            choices = getattr(chunk, "choices", [])
                            if len(choices) > 0:
@@ -481,28 +492,28 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                                     if text is not None:
                                         yield text
                     except Exception as e_openai:
-                        logger.error(f"Error with Openai API: {str(e_openai)}")
-                        yield f"\nError with Openai API: {str(e_openai)}\n\nPlease check that you have set the OPENAI_API_KEY environment variable with a valid API key."
+                        logger.error(f"Openai API错误: {str(e_openai)}")
+                        yield f"\nOpenai API错误: {str(e_openai)}\n\n请检查是否已设置OPENAI_API_KEY环境变量，并使用有效的API密钥。"
                 elif request.provider == "bedrock":
                     try:
-                        # Get the response and handle it properly using the previously created api_kwargs
+                        # 获取响应并使用之前创建的api_kwargs处理
                         logger.info("Making AWS Bedrock API call")
                         response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
-                        # Handle response from Bedrock (not streaming yet)
+                        # 处理Bedrock响应（尚未流式化）
                         if isinstance(response, str):
                             yield response
                         else:
-                            # Try to extract text from the response
+                            # 尝试从响应中提取文本
                             yield str(response)
                     except Exception as e_bedrock:
-                        logger.error(f"Error with AWS Bedrock API: {str(e_bedrock)}")
-                        yield f"\nError with AWS Bedrock API: {str(e_bedrock)}\n\nPlease check that you have set the AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables with valid credentials."
+                        logger.error(f"AWS Bedrock API错误: {str(e_bedrock)}")
+                        yield f"\nAWS Bedrock API错误: {str(e_bedrock)}\n\n请检查是否已设置AWS_ACCESS_KEY_ID和AWS_SECRET_ACCESS_KEY环境变量，并使用有效的凭证。"
                 elif request.provider == "azure":
                     try:
-                        # Get the response and handle it properly using the previously created api_kwargs
+                        # 获取响应并使用之前创建的api_kwargs处理
                         logger.info("Making Azure AI API call")
                         response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
-                        # Handle streaming response from Azure AI
+                        # 处理Azure AI的流式响应
                         async for chunk in response:
                             choices = getattr(chunk, "choices", [])
                             if len(choices) > 0:
@@ -512,51 +523,51 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                                     if text is not None:
                                         yield text
                     except Exception as e_azure:
-                        logger.error(f"Error with Azure AI API: {str(e_azure)}")
-                        yield f"\nError with Azure AI API: {str(e_azure)}\n\nPlease check that you have set the AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and AZURE_OPENAI_VERSION environment variables with valid values."
+                        logger.error(f"Azure AI API错误: {str(e_azure)}")
+                        yield f"\nAzure AI API错误: {str(e_azure)}\n\n请检查是否已设置AZURE_OPENAI_API_KEY、AZURE_OPENAI_ENDPOINT和AZURE_OPENAI_VERSION环境变量，并使用有效的值。"
                 else:
-                    # Generate streaming response
+                    # 生成流式响应
                     response = model.generate_content(prompt, stream=True)
-                    # Stream the response
+                    # 流式响应
                     for chunk in response:
                         if hasattr(chunk, 'text'):
                             yield chunk.text
 
             except Exception as e_outer:
-                logger.error(f"Error in streaming response: {str(e_outer)}")
+                logger.error(f"流式响应时发生错误: {str(e_outer)}")
                 error_message = str(e_outer)
 
-                # Check for token limit errors
+                # 检查token限制错误
                 if "maximum context length" in error_message or "token limit" in error_message or "too many tokens" in error_message:
-                    # If we hit a token limit error, try again without context
-                    logger.warning("Token limit exceeded, retrying without context")
+                    # 如果遇到token限制错误，则尝试不使用上下文重试
+                    logger.warning("超出token限制，尝试不使用上下文重试")
                     try:
-                        # Create a simplified prompt without context
+                        # 创建一个简化的提示，不包含上下文
                         simplified_prompt = f"/no_think {system_prompt}\n\n"
                         if conversation_history:
                             simplified_prompt += f"<conversation_history>\n{conversation_history}</conversation_history>\n\n"
 
-                        # Include file content in the fallback prompt if it was retrieved
+                        # 如果filePath已检索且文件内容存在，则在回退提示中包含文件内容
                         if request.filePath and file_content:
                             simplified_prompt += f"<currentFileContent path=\"{request.filePath}\">\n{file_content}\n</currentFileContent>\n\n"
 
-                        simplified_prompt += "<note>Answering without retrieval augmentation due to input size constraints.</note>\n\n"
+                        simplified_prompt += "<note>由于输入大小限制，跳过检索增强。</note>\n\n"
                         simplified_prompt += f"<query>\n{query}\n</query>\n\nAssistant: "
 
                         if request.provider == "ollama":
                             simplified_prompt += " /no_think"
 
-                            # Create new api_kwargs with the simplified prompt
+                            # 创建新的api_kwargs，使用简化的提示
                             fallback_api_kwargs = model.convert_inputs_to_api_kwargs(
                                 input=simplified_prompt,
                                 model_kwargs=model_kwargs,
                                 model_type=ModelType.LLM
                             )
 
-                            # Get the response using the simplified prompt
+                            # 使用简化的提示获取响应
                             fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
 
-                            # Handle streaming fallback_response from Ollama
+                            # 处理Ollama的回退响应流式化
                             async for chunk in fallback_response:
                                 text = getattr(chunk, 'response', None) or getattr(chunk, 'text', None) or str(chunk)
                                 if text and not text.startswith('model=') and not text.startswith('created_at='):
@@ -564,79 +575,79 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                                     yield text
                         elif request.provider == "openrouter":
                             try:
-                                # Create new api_kwargs with the simplified prompt
+                                # 创建新的api_kwargs，使用简化的提示
                                 fallback_api_kwargs = model.convert_inputs_to_api_kwargs(
                                     input=simplified_prompt,
                                     model_kwargs=model_kwargs,
                                     model_type=ModelType.LLM
                                 )
 
-                                # Get the response using the simplified prompt
+                                # 使用简化的提示获取响应
                                 logger.info("Making fallback OpenRouter API call")
                                 fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
 
-                                # Handle streaming fallback_response from OpenRouter
+                                # 处理OpenRouter的回退响应流式化
                                 async for chunk in fallback_response:
                                     yield chunk
                             except Exception as e_fallback:
-                                logger.error(f"Error with OpenRouter API fallback: {str(e_fallback)}")
-                                yield f"\nError with OpenRouter API fallback: {str(e_fallback)}\n\nPlease check that you have set the OPENROUTER_API_KEY environment variable with a valid API key."
+                                logger.error(f"OpenRouter API回退错误: {str(e_fallback)}")
+                                yield f"\nOpenRouter API回退错误: {str(e_fallback)}\n\n请检查是否已设置OPENROUTER_API_KEY环境变量，并使用有效的API密钥。"
                         elif request.provider == "openai":
                             try:
-                                # Create new api_kwargs with the simplified prompt
+                                # 创建新的api_kwargs，使用简化的提示
                                 fallback_api_kwargs = model.convert_inputs_to_api_kwargs(
                                     input=simplified_prompt,
                                     model_kwargs=model_kwargs,
                                     model_type=ModelType.LLM
                                 )
 
-                                # Get the response using the simplified prompt
+                                # 使用简化的提示获取响应
                                 logger.info("Making fallback Openai API call")
                                 fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
 
-                                # Handle streaming fallback_response from Openai
+                                # 处理Openai的回退响应流式化
                                 async for chunk in fallback_response:
                                     text = chunk if isinstance(chunk, str) else getattr(chunk, 'text', str(chunk))
                                     yield text
                             except Exception as e_fallback:
-                                logger.error(f"Error with Openai API fallback: {str(e_fallback)}")
-                                yield f"\nError with Openai API fallback: {str(e_fallback)}\n\nPlease check that you have set the OPENAI_API_KEY environment variable with a valid API key."
+                                logger.error(f"Openai API回退错误: {str(e_fallback)}")
+                                yield f"\nOpenai API回退错误: {str(e_fallback)}\n\n请检查是否已设置OPENAI_API_KEY环境变量，并使用有效的API密钥。"
                         elif request.provider == "bedrock":
                             try:
-                                # Create new api_kwargs with the simplified prompt
+                                # 创建新的api_kwargs，使用简化的提示
                                 fallback_api_kwargs = model.convert_inputs_to_api_kwargs(
                                     input=simplified_prompt,
                                     model_kwargs=model_kwargs,
                                     model_type=ModelType.LLM
                                 )
 
-                                # Get the response using the simplified prompt
+                                # 使用简化的提示获取响应
                                 logger.info("Making fallback AWS Bedrock API call")
                                 fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
 
-                                # Handle response from Bedrock
+                                # 处理Bedrock响应
                                 if isinstance(fallback_response, str):
                                     yield fallback_response
                                 else:
-                                    # Try to extract text from the response
+                                    # 尝试从响应中提取文本
                                     yield str(fallback_response)
                             except Exception as e_fallback:
-                                logger.error(f"Error with AWS Bedrock API fallback: {str(e_fallback)}")
-                                yield f"\nError with AWS Bedrock API fallback: {str(e_fallback)}\n\nPlease check that you have set the AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables with valid credentials."
+                                logger.error(f"AWS Bedrock API回退错误: {str(e_fallback)}")
+                                yield f"\nAWS Bedrock API回退错误: {str(e_fallback)}\n\n请检查是否已设置AWS_ACCESS_KEY_ID和AWS_SECRET_ACCESS_KEY环境变量，并使用有效的凭证。"
                         elif request.provider == "azure":
                             try:
-                                # Create new api_kwargs with the simplified prompt
+                                # 创建新的api_kwargs，使用简化的提示
                                 fallback_api_kwargs = model.convert_inputs_to_api_kwargs(
                                     input=simplified_prompt,
                                     model_kwargs=model_kwargs,
                                     model_type=ModelType.LLM
                                 )
 
-                                # Get the response using the simplified prompt
+                                # 使用简化的提示获取响应
                                 logger.info("Making fallback Azure AI API call")
                                 fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
 
-                                # Handle streaming fallback response from Azure AI
+                                # 处理Azure AI的回退响应流式化
                                 async for chunk in fallback_response:
                                     choices = getattr(chunk, "choices", [])
                                     if len(choices) > 0:
@@ -646,10 +657,10 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                                             if text is not None:
                                                 yield text
                             except Exception as e_fallback:
-                                logger.error(f"Error with Azure AI API fallback: {str(e_fallback)}")
-                                yield f"\nError with Azure AI API fallback: {str(e_fallback)}\n\nPlease check that you have set the AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and AZURE_OPENAI_VERSION environment variables with valid values."
+                                logger.error(f"Azure AI API回退错误: {str(e_fallback)}")
+                                yield f"\nAzure AI API回退错误: {str(e_fallback)}\n\n请检查是否已设置AZURE_OPENAI_API_KEY、AZURE_OPENAI_ENDPOINT和AZURE_OPENAI_VERSION环境变量，并使用有效的值。"
                         else:
-                            # Initialize Google Generative AI model
+                            # 初始化Google Generative AI模型
                             model_config = get_model_config(request.provider, request.model)
                             fallback_model = genai.GenerativeModel(
                                 model_name=model_config["model"],
@@ -660,30 +671,32 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                                 }
                             )
 
-                            # Get streaming response using simplified prompt
+                            # 使用简化的提示获取流式响应
                             fallback_response = fallback_model.generate_content(simplified_prompt, stream=True)
-                            # Stream the fallback response
+                            # 流式回退响应
                             for chunk in fallback_response:
                                 if hasattr(chunk, 'text'):
                                     yield chunk.text
                     except Exception as e2:
-                        logger.error(f"Error in fallback streaming response: {str(e2)}")
-                        yield f"\nI apologize, but your request is too large for me to process. Please try a shorter query or break it into smaller parts."
+                        logger.error(f"回退流式响应时发生错误: {str(e2)}")
+                        yield f"\n抱歉，您的请求太大，我无法处理。请尝试更短的查询或将其拆分为更小的部分。"
                 else:
-                    # For other errors, return the error message
-                    yield f"\nError: {error_message}"
+                    # 对于其他错误，返回错误消息
+                    yield f"\n错误: {error_message}"
 
-        # Return streaming response
+        # 返回流式响应
         return StreamingResponse(response_stream(), media_type="text/event-stream")
 
     except HTTPException:
         raise
     except Exception as e_handler:
-        error_msg = f"Error in streaming chat completion: {str(e_handler)}"
+        error_msg = f"流式聊天完成时发生错误: {str(e_handler)}"
         logger.error(error_msg)
         raise HTTPException(status_code=500, detail=error_msg)
 
 @app.get("/")
 async def root():
-    """Root endpoint to check if the API is running"""
+    """
+    根端点，用于检查API是否运行
+    """
     return {"status": "API is running", "message": "Navigate to /docs for API documentation"}
