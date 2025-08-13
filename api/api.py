@@ -254,6 +254,7 @@ async def get_model_config():
             defaultProvider="google"
         )
 
+# wuxiaoxu test 生成wiki入口
 @app.post("/export/wiki")
 async def export_wiki(request: WikiExportRequest):
     """

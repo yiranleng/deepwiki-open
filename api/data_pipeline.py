@@ -408,16 +408,15 @@ def transform_documents_and_save_to_db(
         LocalDB: 包含转换后数据的本地数据库对象。
     """
     # 获取数据转换器
-    data_transformer = prepare_data_pipeline(is_ollama_embedder)
+    data_transformer = prepare_data_pipeline(is_ollama_embedder)  # 构建数据处理流水线（如清洗、分段、嵌入），根据参数或配置选择嵌入器
+    db = LocalDB()  # 新建 LocalDB 实例，用来载入原始文档并保存转换结果。from adalflow.core.db import LocalDB
 
-    # 将文档保存到本地数据库
-    db = LocalDB()
-    db.register_transformer(transformer=data_transformer, key="split_and_embed")
-    db.load(documents)
-    db.transform(key="split_and_embed")
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    db.save_state(filepath=db_path)
-    return db
+    db.register_transformer(transformer=data_transformer, key="split_and_embed")  # 注册变换器并用 key 标识（可并存多种流水线）
+    db.load(documents)  # 把传入的 Document 列表载入到本地 DB（可能做校验、去重、索引）
+    db.transform(key="split_and_embed")  # 执行名为 "split_and_embed" 的变换：分段并生成 embedding，结果写回 DB
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)  # 确保保存路径的父目录存在（注意 dirname 为空的情况）
+    db.save_state(filepath=db_path)  # 将 LocalDB 状态序列化并保存到磁盘（建议采用原子写入以防半写入）
+    return db  # 返回已包含转换结果且已保存到磁盘的 LocalDB 实例
 
 def get_github_file_content(repo_url: str, file_path: str, access_token: str = None) -> str:
     """
@@ -845,6 +844,13 @@ class DatabaseManager:
             included_dirs=included_dirs,
             included_files=included_files
         )
+
+
+
+
+
+
+
         self.db = transform_documents_and_save_to_db(
             documents, self.repo_paths["save_db_file"], is_ollama_embedder=is_ollama_embedder
         )
@@ -853,6 +859,8 @@ class DatabaseManager:
         logger.info(f"总转换文档数: {len(transformed_docs)}")
         return transformed_docs
 
+
+-------------用与拆分文档并转化为向量存储到DB
     def prepare_retriever(self, repo_url_or_path: str, type: str = "github", access_token: str = None):
         """
         为仓库准备检索器。
